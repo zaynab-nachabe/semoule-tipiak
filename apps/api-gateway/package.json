@@ -1,0 +1,6 @@
+{
+  "name": "api-gateway",
+  "dependencies": {
+    "@project/shared-types": "*"
+  }
+}

@@ -120,8 +120,8 @@ Un capteur isolé (mouvement seul, ou fréquence cardiaque seule) génère trop 
 
 ## 7. Points restant à approfondir
 
-- [ ] **Stratégie de stockage** : choix définitif de la/les base(s) de données, politique de rétention des données de santé
-- [ ] **Stratégie d'échange client-serveur** : REST vs WebSocket/MQTT pour le dashboard et les notifications
+- [ ] **Stratégie de stockage** : choix définitif de la base de données
+- [ ] **Stratégie d'échange client-serveur** : REST vs WebSocket/MQTT pour le dashboard et les notifications (probablement MQTT pour suivre le cours)
 - [ ] **Matrice d'analyse des risques** (FMEA ou Bowtie) : capteur déconnecté, fausse alerte répétée, latence d'alerte critique, perte de données de santé (RGPD)
 - [ ] **CI/CD** : pipeline de build/test/déploiement à définir
 - [ ] **Structure du code** : découpage en modules/repos (collecte, traitement, dashboard, notification)
