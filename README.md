@@ -1,9 +1,5 @@
 # Fiche de spec
 
-**Statut :** Version initiale (brainstorming) — à affiner
-
----
-
 ## 1. Sujet
 
 **Détection de chute et d'inactivité anormale chez la personne âgée, avec alerte à la famille et à l'équipe médicale.**
