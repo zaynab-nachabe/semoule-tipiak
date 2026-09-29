@@ -87,32 +87,7 @@ Dans le prototype, les capteurs sont **simulés dans Node-RED** en respectant ce
 Après normalisation, **MQTT n'est plus utilisé** : la communication entre services repose sur Kafka (événements) et REST / WebSocket (clients), choisis selon le besoin de chaque échange (voir §6).
 
 ### Schéma du pipeline
-
-```
- CAPTEURS                     INGESTION                    CANAL
-[PIR / plaques / portes] ─Zigbee─► [Zigbee2MQTT] ─MQTT─► [Mosquitto] ─┐
-                                                                      ├─► [Node-RED :        ] ─► [Kafka: raw-events]
-[Montre : chute, FC, SOS] ─BLE─► [appli compagnon] ─HTTP POST────────┘   [normalisation     ]     (message invalide
-                                                                          [+ validation schéma]      ─► raw-events-dlq)
-
- TRAITEMENT
-[Kafka: raw-events] ─┬─► [Service de corrélation (stateful, fenêtres glissantes)] ─► [Kafka: alerts]
-                     │                                                                   │
-                     └─► [Consommateur de stockage] ─► [InfluxDB]                        ├─► [Service de notification] ─► Push / SMS
-                                                          │                              │      (famille, équipe médicale, personne âgée)
-                                                          │ (agrégation quotidienne)     └─► [PostgreSQL : journal des alertes]
-                                                          ▼
-                                                  [Historique / profil habituel]
-
- AFFICHAGE
-[Frontend web (dashboard médical, vue famille, vue personne âgée)]
-        │  REST (lecture historique, config)      ▲ WebSocket (alertes & statut temps réel)
-        ▼                                         │
-[API Gateway NestJS] ──────────────────────────────┘
-   ├─ REST ─► PostgreSQL (profils, contacts, seuils, journal des alertes)
-   ├─ REST ─► InfluxDB (séries temporelles, agrégats)
-   └─ consommateur Kafka (alerts, raw-events) ─► diffusion WebSocket
-```
+![alt text](<My First Board.jpg>)
 
 ### Architecture des services (partie affichage et exposition des données)
 
