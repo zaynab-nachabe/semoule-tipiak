@@ -55,13 +55,13 @@ Le système maintient un **profil d'activité habituel** par personne (routine p
 
 ## 4. Architecture
 
-Voir le fichier dédié : [Présentation de l'architecture](chemin/vers/le/fichier)
+Voir le fichier dédié : [Présentation de l'architecture](docs/Architecture.md)
 
 ## 5. Matrice des risques
 
 **Matrice d'analyse des risques** : capteur déconnecté, fausse alerte, latence d'alerte, perte de données de santé (RGPD)
 
-Voir le fichier dédié : [Présentation de la matrice des risques](chemin/vers/le/fichier)
+Voir le fichier dédié : [Présentation de la matrice des risques](docs/Matrice_risques.md)
 
 ## 6. Domain-Driven Design (DDD)
 
