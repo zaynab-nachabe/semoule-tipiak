@@ -1,5 +1,13 @@
 # Architecture
 
+Organisation en monorepo. Tous les services sont dans un même dépôt. Un système dont les services partagent des contrats de données (format d'événements) et se lancent ensemble via un unique docker-compose, c'est plus simple qu'un dépôt par service et ça rend l'architecture lisible d'un coup d'œil. Le multi-repo n'aurait de sens que pour des équipes déployant indépendamment, ce qui n'est pas notre cas.
+
+
+package json à la racine et Workspace -> à nettoyer ou à argumenter selon les besoins futurs.
+
+Ainsi le monorepo est dans ce cas assumé et documenté, workspaces non pour l'instant, on verra si le besoin apparaît.
+
+
 ## Schéma d'architecture
 ```
    CAPTEURS (simulés)
