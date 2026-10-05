@@ -1,0 +1,43 @@
+# === Dépendances ===
+node_modules/
+**/node_modules/
+
+# === Variables d'environnement (ne jamais versionner) ===
+.env
+.env.local
+.env.*.local
+**/.env
+
+# === Build / sorties ===
+dist/
+build/
+**/dist/
+**/build/
+
+# === Logs ===
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# === Node-RED (service ingestion) ===
+# On versionne les flows exportés, pas les données de runtime
+.node-red/
+services/ingestion/.node-red/
+**/flows_cred*.json
+
+# === Données locales des conteneurs ===
+# Volumes PostgreSQL, etc. montés en local
+infra/data/
+**/pgdata/
+
+# === IDE / éditeurs ===
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# === Divers ===
+coverage/
+*.tmp
