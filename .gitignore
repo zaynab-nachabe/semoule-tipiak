@@ -41,3 +41,8 @@ infra/data/
 # === Divers ===
 coverage/
 *.tmp
+
+# Node-RED : fichiers d'état générés au runtime (dans le service ingestion)
+services/ingestion/.config.*
+services/ingestion/.config.*.backup
+services/ingestion/.sessions.json
