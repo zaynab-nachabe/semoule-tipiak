@@ -2,8 +2,6 @@
 
 Ce document définit le **contrat de données** entre la passerelle d'ingestion (Node-RED) et le reste du système (détection, stockage). Tout signal entrant, quel que soit le capteur et son protocole d'origine (MQTT ou HTTP), est normalisé par Node-RED vers ce format unique avant d'être transmis.
 
-C'est un contrat partagé : tout changement doit être validé par l'équipe, car il impacte tous les services.
-
 ---
 
 ## 1. Structure générale (enveloppe + payload)
