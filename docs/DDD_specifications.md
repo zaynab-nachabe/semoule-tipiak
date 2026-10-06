@@ -3,7 +3,7 @@
 
 Ce document définit l'architecture métier du système en appliquant les concepts du Domain-Driven Design (DDD). L'objectif est d'aligner la conception logicielle avec les exigences du métier (santé, sécurité...). 
 
-Pour garantir une transition fluide vers le code, les concepts métiers ( en français) sont associés à la version anglaise pour correspondre à notre implémentation technique.
+Pour garantir une transition fluide vers le code, les concepts métiers (en français) sont associés à la version anglaise pour correspondre à notre implémentation technique.
 
 ---
 
@@ -14,7 +14,7 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 ### 1.1. Les Acteurs et Rôles
 *   **Personne Accompagnée / `Senior`** : L'acteur principal du système. Il s'agit d'une personne autonome vivant seule, qui génère des données et interagit avec le système pour confirmer ou infirmer son état de santé.
 *   **Aidant / `Caregiver`** : Le corps médical. Il peut s'agir d'un médecin, d'une infirmière... Il reçoit les alertes critiques et peut consulter l'historique des événements.
-*  ** Proche / `Relative`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
+*  **Proche / `Relative`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
 
 ### 1.2. Les Concepts Métiers Fondamentaux
 *   **Profil d'Activité / `ActivityProfile`** : Le modèle de référence définissant la routine habituelle de la personne accompagnée (calculé historiquement) (ex: temps passé habituellement dans la salle de bain le matin).
@@ -108,7 +108,7 @@ Objets possédant une identité unique qui évolue dans le temps (cycle de vie).
 
 Objets immuables définis uniquement par leurs propriétés. S'ils changent, on crée un nouvel objet. Nous utilisons des `Enums` stricts pour éviter les erreurs de frappe dans le code.
 
-* **`SignalType` (Enum)** : `PIR_MOTION`, `HEART_RATE_ANOMALY`, `FALL_IMPACT`, `HELP_BUTTON`.
+* **`SignalType` (Enum)** : `PIR_MOTION`, `HEART_RATE`, `FALL_IMPACT`, `HELP_BUTTON`.
 
 * **`RawSignal`** : `{ sensorId: string, type: SignalType, value: number, timestamp: Date }`
 
