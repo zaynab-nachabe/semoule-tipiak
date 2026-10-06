@@ -79,7 +79,7 @@ Pour que ces *Bounded Contexts* collaborent sans partager le même modèle de ba
 
 ## 4. DDD Tactique (Tactical Design)
 
-Cette section se concentre sur l'intérieur de notre *Bounded Context* principal : le **Correlation & Detection Context**. C'est ici que l'on définit les objets exacts qui seront codés dans l'API NestJS.
+Cette section se concentre sur l'intérieur de notre *Bounded Context* principal : le **Correlation & Detection Context**. C'est ici que l'on définit les objets exacts qui seront codés dans le service de Détection dédié.
 
 ### 4.1. Agrégats et Racines d'Agrégat (Aggregate & Aggregate Root)
 
@@ -110,7 +110,7 @@ Objets immuables définis uniquement par leurs propriétés. S'ils changent, on 
 
 * **`SignalType` (Enum)** : `PIR_MOTION`, `HEART_RATE_ANOMALY`, `FALL_IMPACT`, `HELP_BUTTON`.
 
-* **`RawSignal`** : `{ sensorId: string, type: SignalType | 'HEART_RATE' | 'FALL', value: number, timestamp: Date }`
+* **`RawSignal`** : `{ sensorId: string, type: SignalType, value: number, timestamp: Date }`
 
 * **`ToleranceThreshold`** : `{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, severity: 'HIGH' }`
 * **`TimeRange`** : `{ startTime: '22:00', endTime: '07:00' }`
@@ -125,8 +125,6 @@ Ils permettent aux différentes parties du système de réagir de manière async
   * `RawSignalReceived` : Émis par Node-RED, déclenche l'analyse.
   * `FallSuspected` : Déclenche la demande de pré-confirmation.
   * `PreConfirmationTimeoutExpired` : Déclenché par un minuteur interne si le senior ne répond pas.
-* **`ActivityHistory` (Map)** : Une structure de données clé-valeur (Map) gardant en mémoire les derniers événements d'un Senior pour l'algorithme.
-  * *Structure :* `Map<Date, RawSignal>` (Clé : Timestamp, Valeur : Objet Signal).  * `PreConfirmationCanceled` : Le senior a indiqué que tout va bien.
 * *Événements de sortie :*
   * `PreConfirmationRequested` : Demande d'afficher l'alerte sur la montre ou la tablette.
   * `CriticalAlertGenerated` : Déclenche l'envoi du SMS/Push par le module de notification.
@@ -134,6 +132,8 @@ Ils permettent aux différentes parties du système de réagir de manière async
 ### 4.5. Services de Domaine (Domain Services)
 
 *   **`CorrelationService`** : Reçoit les `RawSignalReceived`, interroge le `ActivityProfileRepository` pour connaître les seuils, et applique les règles métiers complexes ("si Chute + Inactivité > Seuil -> `CriticalAlertGenerated`).
+    * **`ActivityHistory` (Map)** : Une structure de données clé-valeur (Map) gardant en mémoire les derniers événements d'un Senior pour l'algorithme.
+      * *Structure :* `Map<Date, RawSignal>` (Clé : Timestamp, Valeur : Objet Signal).  * `PreConfirmationCanceled` : Le senior a indiqué que tout va bien.
 
 ### 4.6. Dépôts (Repositories)
 
