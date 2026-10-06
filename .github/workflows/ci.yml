@@ -1,0 +1,30 @@
+# CI minimale.
+# Se déclenche à chaque push et pull request sur main.
+# Vérifie que le docker-compose est valide. Volontairement léger :
+# les étapes de test par service seront ajoutées quand les services auront du code.
+
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    steps:
+      # Récupère le code du dépôt
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Vérifie que le docker-compose.yml est syntaxiquement valide
+      - name: Valider docker-compose
+        run: docker compose config --quiet && echo "docker-compose valide"
+
+      # Emplacement prêt pour les tests des services (à activer quand ils auront du code)
+      # - name: Tests detection
+      #   run: cd services/detection && npm ci && npm test
+      # - name: Tests api-gateway
+      #   run: cd apps/api-gateway && npm ci && npm test
