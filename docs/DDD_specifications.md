@@ -13,8 +13,8 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 
 ### 1.1. Les Acteurs et Rôles
 *   **Personne Accompagnée / `Senior`** : L'acteur principal du système. Il s'agit d'une personne autonome vivant seule, qui génère des données et interagit avec le système pour confirmer ou infirmer son état de santé.
-*   **Aidant / `Caregiver`** : Le corps médical. Il peut s'agir d'un médecin, d'une infirmière... Il reçoit les alertes critiques et peut consulter l'historique des événements.
-*  ** Proche / `Relative`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
+*   **Aidant / `MedicalStaff`** : Le corps médical. Il peut s'agir d'un médecin, d'une infirmière... Il reçoit les alertes critiques et peut consulter l'historique des événements.
+*  ** Proche / `FamilyMember`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
 
 ### 1.2. Les Concepts Métiers Fondamentaux
 *   **Profil d'Activité / `ActivityProfile`** : Le modèle de référence définissant la routine habituelle de la personne accompagnée (calculé historiquement) (ex: temps passé habituellement dans la salle de bain le matin).
@@ -35,7 +35,7 @@ Pour valider notre compréhension du flux de données et des règles de décisio
 2.  Le système de détection reçoit le signal et initie immédiatement un processus de `PreConfirmation`.
 3.  La montre du `Senior` vibre et affiche la question : "Avez-vous chuté ?". Un minuteur de 60 secondes démarre.
 4.  Le `Senior` appuie sur "Non, tout va bien".
-5.  Le système annule la procédure. Aucune `CriticalAlert` n'est générée, évitant ainsi de déranger inutilement les `Caregivers`. L'événement est toutefois journalisé pour l'historique médical.
+5.  Le système annule la procédure. Aucune `CriticalAlert` n'est générée, évitant ainsi de déranger inutilement les `MedicalStaff`. L'événement est toutefois journalisé pour l'historique médical.
 
 ### Scénario B : Inactivité anormale avec escalade (Alerte Réelle)
 1.  Le système détecte une `InactivityWindow` de 2 heures dans le salon.
@@ -44,7 +44,7 @@ Pour valider notre compréhension du flux de données et des règles de décisio
 4.  Le délai de la `PreConfirmation` expire sans réponse de la part du `Senior`.
 5.  Le système croise cette information avec l'absence de `RawSignal` cardiaque (montre déconnectée ou signal plat).
 6.  Le système génère une `CriticalAlert` avec le motif *Inactivité prolongée et absence de réponse*.
-7.  Le module de notification distribue la `CriticalAlert` aux `Caregivers` selon leurs préférences (SMS à la famille, notification web à l'équipe médicale).
+7.  Le module de notification distribue la `CriticalAlert` aux `MedicalStaff` selon leurs préférences (SMS à la famille, notification web à l'équipe médicale).
 
 ## 3. DDD Stratégique (Strategic Design) & Context Map
 
@@ -74,8 +74,9 @@ Pour que ces *Bounded Contexts* collaborent sans partager le même modèle de ba
     *   L'`Ingestion Gateway Context` se place en amont (Upstream). Il agit comme une **Anti-Corruption Layer (ACL)**. Il protège notre cœur de métier en traduisant les signaux physiques en événements propres (`RawSignalReceived`). Ainsi, si on change de marque de capteur demain, seul Node-RED est impacté, le `Correlation Context` ne change pas.
 2.  **Relation Profils -> Détection (Conformist / Shared Kernel restreint)**
     *   Le `Correlation Context` a besoin de lire les `ToleranceThresholds` stockés dans le `Profile Management Context` pour prendre ses décisions.
-3.  **Relation Détection -> Notification (Publisher / Subscriber)**
+3.  **Relation Détection -> Notification**
     *   Le `Correlation Context` (Upstream) émet un événement asynchrone `CriticalAlertGenerated`. Le `Notification Context` (Downstream) l'écoute et se charge de prévenir les `FamilyMembers` et `MedicalStaffs`.
+    *   **Note d'infrastructure** : Pour éviter la complexité d'un bus de messages lourd tout en respectant l'architecture événementielle, ce couplage sera implémenté en réutilisant le broker MQTT (Mosquitto) déjà présent pour l'ingestion des capteurs. Le service de détection publiera l'alerte sur un topic interne dédié que le module de notification écoutera.
 
 ## 4. DDD Tactique (Tactical Design)
 
