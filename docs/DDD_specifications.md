@@ -14,7 +14,7 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 ### 1.1. Les Acteurs et Rôles
 *   **Personne Accompagnée / `Senior`** : L'acteur principal du système. Il s'agit d'une personne autonome vivant seule, qui génère des données et interagit avec le système pour confirmer ou infirmer son état de santé.
 *   **Aidant / `MedicalStaff`** : Le corps médical. Il peut s'agir d'un médecin, d'une infirmière... Il reçoit les alertes critiques et peut consulter l'historique des événements.
-*  **Proche / `FamilyMember`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
+*  ** Proche / `FamilyMember`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
 
 ### 1.2. Les Concepts Métiers Fondamentaux
 *   **Profil d'Activité / `ActivityProfile`** : Le modèle de référence définissant la routine habituelle de la personne accompagnée (calculé historiquement) (ex: temps passé habituellement dans la salle de bain le matin).
@@ -109,14 +109,18 @@ Objets possédant une identité unique qui évolue dans le temps (cycle de vie).
 
 Objets immuables définis uniquement par leurs propriétés. S'ils changent, on crée un nouvel objet. Nous utilisons des `Enums` stricts pour éviter les erreurs de frappe dans le code.
 
-* **`SignalType` (Enum)** : `PIR_MOTION`, `HEART_RATE`, `FALL_IMPACT`, `HELP_BUTTON`.
+* **`SignalType` (Enum)** : `PIR_MOTION`, `HEART_RATE`, `FALL_IMPACT`, `HELP_BUTTON`, `CANCEL_ALERT`, `SENSOR_HEARTBEAT`.
 
-* **`RawSignal`** : `{ sensorId: string, type: SignalType, value: number, timestamp: Date }`
+* **`RawSignal`** : `{ event_Id: string, senior_Id: string, sensorId: string, type: SignalType, timestamp: Date, payload: SignalPayload }`
+  * **`SignalPayload`** :
+    * **HeartRatePayload** : `{ value: number, unit: 'BPM' }`
+    * **FallImpactPayload** : `{ impactForce: number, unit: 'G' }`
+    * **PIRMotionPayload** : `{ room: string }`
+    * **SensorHeartbeatPayload** : `{ batteryLevel: number }`
 
 * **`ToleranceThreshold`** : `{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, severity: 'HIGH' }`
 * **`TimeRange`** : `{ startTime: '22:00', endTime: '07:00' }`
 * **`PreConfirmation`** : `{ seniorId: string, alertId: string, requestedAt: Date, expiresAt: Date }`
-* **HeartRateMeasurement** : `{ value: number, unit: 'BPM', timestamp: Date }`
 
 ### 4.4. Événements de Domaine (Domain Events)
 

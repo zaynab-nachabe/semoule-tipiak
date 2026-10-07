@@ -61,19 +61,23 @@ Valeurs autorisées pour le champ `type` :
 
 ### `HEART_RATE`
 ```json
-{ "bpm": 72 }
+{ "value": 72,
+  "unit": "bpm"
+ }
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `bpm` | number | Fréquence cardiaque en battements par minute. |
+| `value` | number | Valeur de la fréquence cardiaque. |
+| `unit` | string | Unité de mesure (ici `bpm` pour battements par minute). |
 
 ### `FALL_IMPACT`
 ```json
-{ "impactForce": 9.8 }
+{ "value": 9.8, "unit": "g" }
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `impactForce` | number | Intensité de l'impact détecté (en g). Permet de filtrer les chocs mineurs. |
+| `value` | number | Intensité de l'impact détecté. |
+| `unit` | string | Unité de mesure (ici `g` pour grammes). Permet de filtrer les chocs mineurs. |
 
 ### `HELP_BUTTON`
 ```json
@@ -91,12 +95,13 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
 
 ### `SENSOR_HEARTBEAT`
 ```json
-{ "batteryLevel": 84, "status": "OK" }
+{
+  "batteryLevel": 84
+}
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `batteryLevel` | number | Niveau de batterie en pourcentage. |
-| `status` | string | État rapporté par le capteur (`OK`, `LOW_BATTERY`…). |
+| `batteryLevel` | number | Niveau de batterie en pourcentage. 
 
 ---
 
@@ -122,7 +127,7 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
   "sensorId": "watch-001",
   "type": "HEART_RATE",
   "timestamp": "2026-01-15T08:13:00.000Z",
-  "payload": { "bpm": 68 }
+  "payload": { "value": 68, "unit": "bpm" }
 }
 ```
 
@@ -134,7 +139,7 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
   "sensorId": "watch-001",
   "type": "FALL_IMPACT",
   "timestamp": "2026-01-15T14:32:08.000Z",
-  "payload": { "impactForce": 9.8 }
+  "payload": { "value": 9.8, "unit": "g" }
 }
 ```
 
