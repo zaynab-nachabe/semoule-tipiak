@@ -61,22 +61,26 @@ Valeurs autorisées pour le champ `type` :
 
 ### `HEART_RATE`
 ```json
-{ "value": 72,
+{ 
+  "heartRate": 72,
   "unit": "bpm"
- }
+}
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `value` | number | Valeur de la fréquence cardiaque. |
+| `heartRate` | number | Valeur de la fréquence cardiaque. |
 | `unit` | string | Unité de mesure (ici `bpm` pour battements par minute). |
 
 ### `FALL_IMPACT`
 ```json
-{ "value": 9.8, "unit": "g" }
+{ 
+  "impactForce": 9.8, 
+  "unit": "g" 
+}
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `value` | number | Intensité de l'impact détecté. |
+| `impactForce` | number | Intensité de l'impact détecté. |
 | `unit` | string | Unité de mesure (ici `g` pour grammes). Permet de filtrer les chocs mineurs. |
 
 ### `HELP_BUTTON`
@@ -96,12 +100,14 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
 ### `SENSOR_HEARTBEAT`
 ```json
 {
-  "batteryLevel": 84
+  "batteryLevel": 84,
+  "unit": "%"
 }
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `batteryLevel` | number | Niveau de batterie en pourcentage. 
+| `batteryLevel` | number | Niveau de batterie en pourcentage. |
+| `unit` | string | Unité de mesure (ici `%` pour pourcentage). |
 
 ---
 

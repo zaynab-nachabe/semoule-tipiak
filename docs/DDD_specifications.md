@@ -111,12 +111,12 @@ Objets immuables définis uniquement par leurs propriétés. S'ils changent, on 
 
 * **`SignalType` (Enum)** : `PIR_MOTION`, `HEART_RATE`, `FALL_IMPACT`, `HELP_BUTTON`, `CANCEL_ALERT`, `SENSOR_HEARTBEAT`.
 
-* **`RawSignal`** : `{ event_Id: string, senior_Id: string, sensorId: string, type: SignalType, timestamp: Date, payload: SignalPayload }`
+* **`RawSignal`** : `{ eventId: string, seniorId: string, sensorId: string, type: SignalType, timestamp: Date, payload: SignalPayload }`
   * **`SignalPayload`** :
-    * **HeartRatePayload** : `{ value: number, unit: 'BPM' }`
+    * **HeartRatePayload** : `{ heartRate: number, unit: 'BPM' }`
     * **FallImpactPayload** : `{ impactForce: number, unit: 'G' }`
     * **PIRMotionPayload** : `{ room: string }`
-    * **SensorHeartbeatPayload** : `{ batteryLevel: number }`
+    * **SensorHeartbeatPayload** : `{ batteryLevel: number, unit: '%' }`
 
 * **`ToleranceThreshold`** : `{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, severity: 'HIGH' }`
 * **`TimeRange`** : `{ startTime: '22:00', endTime: '07:00' }`
