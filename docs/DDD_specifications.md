@@ -14,7 +14,7 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 ### 1.1. Les Acteurs et Rôles
 *   **Personne Accompagnée / `Senior`** : L'acteur principal du système. Il s'agit d'une personne autonome vivant seule, qui génère des données et interagit avec le système pour confirmer ou infirmer son état de santé.
 *   **Aidant / `MedicalStaff`** : Le corps médical. Il peut s'agir d'un médecin, d'une infirmière... Il reçoit les alertes critiques et peut consulter l'historique des événements.
-*  ** Proche / `FamilyMember`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
+*  **Proche / `FamilyMember`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
 
 ### 1.2. Les Concepts Métiers Fondamentaux
 *   **Profil d'Activité / `ActivityProfile`** : Le modèle de référence définissant la routine habituelle de la personne accompagnée (calculé historiquement) (ex: temps passé habituellement dans la salle de bain le matin).
