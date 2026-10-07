@@ -12,6 +12,9 @@ Socle technique du projet, lancé avec Docker Compose. Contient pour l'instant l
 Depuis la **racine du projet** :
 
 ```bash
+# Créer le fichier de variables d'environnement (une seule fois)
+cp .env.example .env
+
 # Lancer l'infrastructure
 docker compose up
 ```

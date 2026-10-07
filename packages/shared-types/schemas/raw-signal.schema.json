@@ -15,7 +15,6 @@
       "enum": [
         "PIR_MOTION",
         "PRESSURE_PLATE",
-        "DOOR_CONTACT",
         "HEART_RATE",
         "FALL_IMPACT",
         "HELP_BUTTON",
@@ -34,10 +33,6 @@
     {
       "if": { "properties": { "type": { "const": "PRESSURE_PLATE" } } },
       "then": { "properties": { "payload": { "$ref": "#/definitions/PressurePlatePayload" } } }
-    },
-    {
-      "if": { "properties": { "type": { "const": "DOOR_CONTACT" } } },
-      "then": { "properties": { "payload": { "$ref": "#/definitions/DoorContactPayload" } } }
     },
     {
       "if": { "properties": { "type": { "const": "HEART_RATE" } } },
@@ -90,16 +85,6 @@
         "room": { "$ref": "#/definitions/NonEmptyString" },
         "location": { "$ref": "#/definitions/NonEmptyString" },
         "state": { "type": "string", "enum": ["PRESSED", "RELEASED"] }
-      }
-    },
-    "DoorContactPayload": {
-      "type": "object",
-      "required": ["room", "door", "state"],
-      "additionalProperties": false,
-      "properties": {
-        "room": { "$ref": "#/definitions/NonEmptyString" },
-        "door": { "$ref": "#/definitions/NonEmptyString" },
-        "state": { "type": "string", "enum": ["OPEN", "CLOSED"] }
       }
     },
     "HeartRatePayload": {

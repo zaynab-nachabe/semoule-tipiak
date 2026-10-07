@@ -5,7 +5,6 @@ import type { IsoUtcTimestamp, TopicSafeId, Uuid } from './common.js';
 export const SignalType = {
   PIR_MOTION: 'PIR_MOTION',
   PRESSURE_PLATE: 'PRESSURE_PLATE',
-  DOOR_CONTACT: 'DOOR_CONTACT',
   HEART_RATE: 'HEART_RATE',
   FALL_IMPACT: 'FALL_IMPACT',
   HELP_BUTTON: 'HELP_BUTTON',
@@ -16,9 +15,6 @@ export type SignalType = (typeof SignalType)[keyof typeof SignalType];
 
 export const PressureState = { PRESSED: 'PRESSED', RELEASED: 'RELEASED' } as const;
 export type PressureState = (typeof PressureState)[keyof typeof PressureState];
-
-export const DoorState = { OPEN: 'OPEN', CLOSED: 'CLOSED' } as const;
-export type DoorState = (typeof DoorState)[keyof typeof DoorState];
 
 export const SensorStatus = { OK: 'OK', LOW_BATTERY: 'LOW_BATTERY', FAULT: 'FAULT' } as const;
 export type SensorStatus = (typeof SensorStatus)[keyof typeof SensorStatus];
@@ -31,12 +27,6 @@ export interface PressurePlatePayload {
   room: string;
   location: string;
   state: PressureState;
-}
-
-export interface DoorContactPayload {
-  room: string;
-  door: string;
-  state: DoorState;
 }
 
 export interface HeartRatePayload {
@@ -64,7 +54,6 @@ export interface SensorHeartbeatPayload {
 export interface SignalPayloadByType {
   PIR_MOTION: PirMotionPayload;
   PRESSURE_PLATE: PressurePlatePayload;
-  DOOR_CONTACT: DoorContactPayload;
   HEART_RATE: HeartRatePayload;
   FALL_IMPACT: FallImpactPayload;
   HELP_BUTTON: HelpButtonPayload;
