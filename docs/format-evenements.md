@@ -39,6 +39,7 @@ Valeurs autorisées pour le champ `type` :
 | Valeur | Signification | Source |
 |---|---|---|
 | `PIR_MOTION` | Mouvement détecté dans une pièce | Détecteur PIR |
+| `PRESSURE_PLATE` | Appui ou relâchement sur une plaque de pression (lit, fauteuil, seuil de pièce) | Plaque de pression |
 | `HEART_RATE` | Mesure de fréquence cardiaque | Montre / bracelet |
 | `FALL_IMPACT` | Impact détecté (chute possible) | Accéléromètre de la montre |
 | `HELP_BUTTON` | Demande d'aide manuelle | Bouton de la montre / appli |
@@ -58,6 +59,18 @@ Valeurs autorisées pour le champ `type` :
 | Champ | Type | Description |
 |---|---|---|
 | `room` | string | Pièce où le mouvement a été détecté. Sert à reconstruire la position dans le logement. |
+
+### `PRESSURE_PLATE`
+```json
+{ "room": "chambre", "location": "lit", "state": "PRESSED" }
+```
+| Champ | Type | Description |
+|---|---|---|
+| `room` | string | Pièce où se trouve la plaque. Sert, comme pour `PIR_MOTION`, à reconstruire la position dans le logement. |
+| `location` | string | Emplacement précis de la plaque dans la pièce (`lit`, `fauteuil`, `seuil`…). |
+| `state` | string (enum) | `PRESSED` (quelqu'un monte dessus) ou `RELEASED` (la personne en descend). |
+
+Une plaque de pression émet un événement à chaque **changement d'état**, pas en continu. La durée passée sur la plaque (ex. temps passé au lit) se déduit de l'écart entre le `PRESSED` et le `RELEASED` qui suit.
 
 ### `HEART_RATE`
 ```json
@@ -122,6 +135,18 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
   "type": "PIR_MOTION",
   "timestamp": "2026-01-15T08:12:45.000Z",
   "payload": { "room": "cuisine" }
+}
+```
+
+**Personne qui se couche (plaque de pression du lit)**
+```json
+{
+  "eventId": "a1b2c3d4-0005-4000-8000-000000000005",
+  "seniorId": "senior-001",
+  "sensorId": "plate-lit",
+  "type": "PRESSURE_PLATE",
+  "timestamp": "2026-01-15T22:10:00.000Z",
+  "payload": { "room": "chambre", "location": "lit", "state": "PRESSED" }
 }
 ```
 
