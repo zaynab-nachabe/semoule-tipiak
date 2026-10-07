@@ -1,0 +1,148 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "raw-signal.schema.json",
+  "title": "RawSignal",
+  "description": "Signal normalisé publié par l'ingestion. Voir docs/format-evenements.md §1 à §3.",
+  "type": "object",
+  "required": ["eventId", "seniorId", "sensorId", "type", "timestamp", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": { "$ref": "#/definitions/Uuid" },
+    "seniorId": { "$ref": "#/definitions/TopicSafeId" },
+    "sensorId": { "$ref": "#/definitions/TopicSafeId" },
+    "type": {
+      "type": "string",
+      "enum": [
+        "PIR_MOTION",
+        "PRESSURE_PLATE",
+        "DOOR_CONTACT",
+        "HEART_RATE",
+        "FALL_IMPACT",
+        "HELP_BUTTON",
+        "CANCEL_ALERT",
+        "SENSOR_HEARTBEAT"
+      ]
+    },
+    "timestamp": { "$ref": "#/definitions/IsoUtcTimestamp" },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "PIR_MOTION" } } },
+      "then": { "properties": { "payload": { "$ref": "#/definitions/PirMotionPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "PRESSURE_PLATE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/definitions/PressurePlatePayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "DOOR_CONTACT" } } },
+      "then": { "properties": { "payload": { "$ref": "#/definitions/DoorContactPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "HEART_RATE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/definitions/HeartRatePayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "FALL_IMPACT" } } },
+      "then": { "properties": { "payload": { "$ref": "#/definitions/FallImpactPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "HELP_BUTTON" } } },
+      "then": { "properties": { "payload": { "$ref": "#/definitions/HelpButtonPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "CANCEL_ALERT" } } },
+      "then": { "properties": { "payload": { "$ref": "#/definitions/CancelAlertPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "SENSOR_HEARTBEAT" } } },
+      "then": { "properties": { "payload": { "$ref": "#/definitions/SensorHeartbeatPayload" } } }
+    }
+  ],
+  "definitions": {
+    "Uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "TopicSafeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "IsoUtcTimestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$"
+    },
+    "NonEmptyString": { "type": "string", "minLength": 1 },
+    "PirMotionPayload": {
+      "type": "object",
+      "required": ["room"],
+      "additionalProperties": false,
+      "properties": {
+        "room": { "$ref": "#/definitions/NonEmptyString" }
+      }
+    },
+    "PressurePlatePayload": {
+      "type": "object",
+      "required": ["room", "location", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "room": { "$ref": "#/definitions/NonEmptyString" },
+        "location": { "$ref": "#/definitions/NonEmptyString" },
+        "state": { "type": "string", "enum": ["PRESSED", "RELEASED"] }
+      }
+    },
+    "DoorContactPayload": {
+      "type": "object",
+      "required": ["room", "door", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "room": { "$ref": "#/definitions/NonEmptyString" },
+        "door": { "$ref": "#/definitions/NonEmptyString" },
+        "state": { "type": "string", "enum": ["OPEN", "CLOSED"] }
+      }
+    },
+    "HeartRatePayload": {
+      "type": "object",
+      "required": ["bpm"],
+      "additionalProperties": false,
+      "properties": {
+        "bpm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 300,
+          "description": "0 est accepté : un signal plat est une information pour la détection, pas une erreur."
+        }
+      }
+    },
+    "FallImpactPayload": {
+      "type": "object",
+      "required": ["impactForce"],
+      "additionalProperties": false,
+      "properties": {
+        "impactForce": { "type": "number", "minimum": 0, "description": "Intensité de l'impact, en g." }
+      }
+    },
+    "HelpButtonPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "CancelAlertPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "alertId": { "$ref": "#/definitions/NonEmptyString" }
+      }
+    },
+    "SensorHeartbeatPayload": {
+      "type": "object",
+      "required": ["batteryLevel", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "batteryLevel": { "type": "number", "minimum": 0, "maximum": 100 },
+        "status": { "type": "string", "enum": ["OK", "LOW_BATTERY", "FAULT"] }
+      }
+    }
+  }
+}
