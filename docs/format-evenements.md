@@ -39,6 +39,7 @@ Valeurs autorisées pour le champ `type` :
 | Valeur | Signification | Source |
 |---|---|---|
 | `PIR_MOTION` | Mouvement détecté dans une pièce | Détecteur PIR |
+| `PRESSURE_PLATE` | Appui ou relâchement sur une plaque de pression (lit, fauteuil, seuil de pièce) | Plaque de pression |
 | `HEART_RATE` | Mesure de fréquence cardiaque | Montre / bracelet |
 | `FALL_IMPACT` | Impact détecté (chute possible) | Accéléromètre de la montre |
 | `HELP_BUTTON` | Demande d'aide manuelle | Bouton de la montre / appli |
@@ -59,21 +60,41 @@ Valeurs autorisées pour le champ `type` :
 |---|---|---|
 | `room` | string | Pièce où le mouvement a été détecté. Sert à reconstruire la position dans le logement. |
 
-### `HEART_RATE`
+### `PRESSURE_PLATE`
 ```json
-{ "bpm": 72 }
+{ "room": "chambre", "location": "lit", "state": "PRESSED" }
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `bpm` | number | Fréquence cardiaque en battements par minute. |
+| `room` | string | Pièce où se trouve la plaque. Sert, comme pour `PIR_MOTION`, à reconstruire la position dans le logement. |
+| `location` | string | Emplacement précis de la plaque dans la pièce (`lit`, `fauteuil`, `seuil`…). |
+| `state` | string (enum) | `PRESSED` (quelqu'un monte dessus) ou `RELEASED` (la personne en descend). |
+
+Une plaque de pression émet un événement à chaque **changement d'état**, pas en continu. La durée passée sur la plaque (ex. temps passé au lit) se déduit de l'écart entre le `PRESSED` et le `RELEASED` qui suit.
+
+### `HEART_RATE`
+```json
+{ 
+  "heartRate": 72,
+  "unit": "bpm"
+}
+```
+| Champ | Type | Description |
+|---|---|---|
+| `heartRate` | number | Valeur de la fréquence cardiaque. |
+| `unit` | string | Unité de mesure (ici `bpm` pour battements par minute). |
 
 ### `FALL_IMPACT`
 ```json
-{ "impactForce": 9.8 }
+{ 
+  "impactForce": 9.8, 
+  "unit": "g" 
+}
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `impactForce` | number | Intensité de l'impact détecté (en g). Permet de filtrer les chocs mineurs. |
+| `impactForce` | number | Intensité de l'impact détecté. |
+| `unit` | string | Unité de mesure (ici `g` pour grammes). Permet de filtrer les chocs mineurs. |
 
 ### `HELP_BUTTON`
 ```json
@@ -91,12 +112,15 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
 
 ### `SENSOR_HEARTBEAT`
 ```json
-{ "batteryLevel": 84, "status": "OK" }
+{
+  "batteryLevel": 84,
+  "unit": "%"
+}
 ```
 | Champ | Type | Description |
 |---|---|---|
 | `batteryLevel` | number | Niveau de batterie en pourcentage. |
-| `status` | string | État rapporté par le capteur (`OK`, `LOW_BATTERY`…). |
+| `unit` | string | Unité de mesure (ici `%` pour pourcentage). |
 
 ---
 
@@ -114,6 +138,18 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
 }
 ```
 
+**Personne qui se couche (plaque de pression du lit)**
+```json
+{
+  "eventId": "a1b2c3d4-0005-4000-8000-000000000005",
+  "seniorId": "senior-001",
+  "sensorId": "plate-lit",
+  "type": "PRESSURE_PLATE",
+  "timestamp": "2026-01-15T22:10:00.000Z",
+  "payload": { "room": "chambre", "location": "lit", "state": "PRESSED" }
+}
+```
+
 **Mesure de fréquence cardiaque**
 ```json
 {
@@ -122,7 +158,7 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
   "sensorId": "watch-001",
   "type": "HEART_RATE",
   "timestamp": "2026-01-15T08:13:00.000Z",
-  "payload": { "bpm": 68 }
+  "payload": { "value": 68, "unit": "bpm" }
 }
 ```
 
@@ -134,7 +170,7 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
   "sensorId": "watch-001",
   "type": "FALL_IMPACT",
   "timestamp": "2026-01-15T14:32:08.000Z",
-  "payload": { "impactForce": 9.8 }
+  "payload": { "value": 9.8, "unit": "g" }
 }
 ```
 
