@@ -1,7 +1,10 @@
 # CI minimale.
 # Se déclenche à chaque push et pull request sur main.
-# Vérifie que le docker-compose est valide. Volontairement léger :
-# les étapes de test par service seront ajoutées quand les services auront du code.
+# Deux vérifications :
+#   - le docker-compose est valide ;
+#   - le contrat de données (format des événements) est cohérent entre le document,
+#     les JSON Schemas, les types TypeScript et le flow Node-RED d'ingestion.
+# Les tests par service seront ajoutés quand les services auront du code.
 
 name: CI
 
@@ -28,3 +31,27 @@ jobs:
       #   run: cd services/detection && npm ci && npm test
       # - name: Tests api-gateway
       #   run: cd apps/api-gateway && npm ci && npm test
+
+  contrat-evenements:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      # Les types TypeScript du contrat compilent (strict)
+      - name: Vérifier les types partagés
+        run: npm run typecheck
+
+      # Exemples de docs/format-evenements.md vs JSON Schemas, enums TypeScript vs schémas,
+      # et messages produits par services/ingestion/flows.json vs schémas
+      - name: Vérifier le format des événements
+        run: npm test

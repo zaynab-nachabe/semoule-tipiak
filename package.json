@@ -8,5 +8,9 @@
     "apps/*",
     "services/detection",
     "services/notification"
-  ]
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present"
+  }
 }

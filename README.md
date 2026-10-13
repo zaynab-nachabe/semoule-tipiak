@@ -29,7 +29,7 @@ Les trois personas ont des besoins réellement différents, ce qui justifie **tr
 
 | Donnée | Source | Nature |
 |---|---|---|
-| Mouvement / présence par pièce | Détecteurs PIR (détecteurs de mouvement), plaques de pression, contacts de porte | Événementiel |
+| Mouvement / présence par pièce | Détecteurs PIR (détecteurs de mouvement), plaques de pression (lit, fauteuil, seuil de pièce) | Événementiel |
 | Fréquence cardiaque | Montre / bracelet connecté | Mesure périodique (~1/min) |
 | Détection de chute (impact) | Accéléromètre de la montre | Événement ponctuel |
 | Demande d'aide / annulation d'alerte | Bouton de la montre ou appli | Événement ponctuel |
@@ -57,6 +57,28 @@ Le système maintient un **profil d'activité habituel** par personne (routine p
 
 Voir le fichier dédié : [Présentation de l'architecture](docs/Architecture.md)
 
+### Stack technique
+
+| Couche | Technologie | Rôle |
+|---|---|---|
+| Capteurs → système | **MQTT** (broker Mosquitto) pour les capteurs fixes, **HTTP** pour la montre | Protocoles imposés par le matériel |
+| Ingestion | **Node-RED** | Réception MQTT / HTTP, normalisation, rejet des messages invalides |
+| Messagerie interne | **MQTT** (le même broker Mosquitto) | Signaux normalisés, événements de domaine, alertes |
+| Stockage | **PostgreSQL** | Profils, relations et consentements, seuils, mesures, journal des alertes |
+| API | **NestJS** | REST + WebSocket vers les frontends, droits par rôle |
+| Conteneurisation | **Docker Compose** | Environnement de développement |
+
+**Choix assumés**
+- **Pas de Kafka.** Un seul senior et une poignée de capteurs : le volume ne justifie pas un bus de messages dédié, et Mosquitto est déjà nécessaire pour les capteurs. Contrepartie : pas de rejeu de l'historique des événements. Le risque de perte de messages (R9 de la matrice des risques) est limité par les sessions persistantes MQTT (voir [topics-mqtt.md](docs/topics-mqtt.md)).
+- **Pas d'InfluxDB.** PostgreSQL suffit pour les mesures à ce volume (voir [Architecture](docs/Architecture.md)).
+
+### Contrat de données et topics
+
+- [Format des événements](docs/format-evenements.md) : enveloppe, types de signaux, événements de domaine, messages rejetés.
+- [Topics MQTT](docs/topics-mqtt.md) : qui publie quoi, qui s'abonne à quoi.
+- Schémas lisibles par machine (JSON Schema + types TypeScript) : [`packages/shared-types`](packages/shared-types). Vérifiés à chaque push par la CI.
+- Lancer l'infrastructure en local : [infra/README.md](infra/README.md).
+
 ## 5. Matrice des risques
 
 **Matrice d'analyse des risques** : capteur déconnecté, fausse alerte, latence d'alerte, perte de données de santé (RGPD)
@@ -65,12 +87,12 @@ Voir le fichier dédié : [Présentation de la matrice des risques](docs/Matrice
 
 ## 6. Domain-Driven Design (DDD)
 
-Voir le fichier dédié : [Domain-Driven Design](chemin/vers/le/fichier)
+Voir le fichier dédié : [Domain-Driven Design](docs/DDD_specifications.md)
 
 ## Points à approfondir
 
 - [ ] **Séparation des données par rôle** : modèle de droits (rôle × relation consentie) au niveau de l'API
 - [ ] **Règles de corrélation** : seuils, durée des fenêtres, délai de pré-confirmation avant escalade
 - [ ] **RGPD** : durée de conservation des données de santé, gestion du consentement
-- [ ] **CI/CD** : pipeline build / test / déploiement
+- [ ] **CI/CD** : la CI valide déjà `docker-compose.yml` et le format des événements ; reste les tests des services et le déploiement
 - [ ] **Structure du code** : découpage en services (ingestion, détection, API, notification, frontends)
