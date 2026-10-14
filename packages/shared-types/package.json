@@ -10,9 +10,11 @@
     "./schemas/*": "./schemas/*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "devDependencies": {
+    "ajv": "^8.17.1",
     "typescript": "^5.6.0"
   }
 }

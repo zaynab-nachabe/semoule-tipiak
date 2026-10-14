@@ -89,23 +89,25 @@
     },
     "HeartRatePayload": {
       "type": "object",
-      "required": ["bpm"],
+      "required": ["value", "unit"],
       "additionalProperties": false,
       "properties": {
-        "bpm": {
+        "value": {
           "type": "number",
           "minimum": 0,
           "maximum": 300,
           "description": "0 est accepté : un signal plat est une information pour la détection, pas une erreur."
-        }
+        },
+        "unit": { "type": "string", "enum": ["bpm"] }
       }
     },
     "FallImpactPayload": {
       "type": "object",
-      "required": ["impactForce"],
+      "required": ["value", "unit"],
       "additionalProperties": false,
       "properties": {
-        "impactForce": { "type": "number", "minimum": 0, "description": "Intensité de l'impact, en g." }
+        "value": { "type": "number", "minimum": 0, "description": "Intensité de l'impact." },
+        "unit": { "type": "string", "enum": ["g"], "description": "Accélération de la pesanteur (et non des grammes)." }
       }
     },
     "HelpButtonPayload": {
@@ -122,11 +124,11 @@
     },
     "SensorHeartbeatPayload": {
       "type": "object",
-      "required": ["batteryLevel", "status"],
+      "required": ["batteryLevel", "unit"],
       "additionalProperties": false,
       "properties": {
         "batteryLevel": { "type": "number", "minimum": 0, "maximum": 100 },
-        "status": { "type": "string", "enum": ["OK", "LOW_BATTERY", "FAULT"] }
+        "unit": { "type": "string", "enum": ["%"] }
       }
     }
   }

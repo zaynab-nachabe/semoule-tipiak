@@ -37,7 +37,7 @@ Les services communiquent entre eux par leur **nom** sur le réseau Docker commu
 docker compose ps        # les trois services doivent être "Up"
 ```
 
-Puis ouvrir http://localhost:1880 : l'éditeur Node-RED doit s'afficher.
+Puis ouvrir http://localhost:1880 : l'éditeur Node-RED doit s'afficher, avec les onglets **Ingestion** et **Simulateur**. Pour tester le pipeline avec des capteurs simulés, voir [services/ingestion/README.md](../services/ingestion/README.md).
 
 ## Arrêter
 

@@ -2,6 +2,16 @@
 
 Ce document définit le **contrat de données** entre la passerelle d'ingestion (Node-RED) et le reste du système (détection, stockage). Tout signal entrant, quel que soit le capteur et son protocole d'origine (MQTT ou HTTP), est normalisé par Node-RED vers ce format unique avant d'être transmis.
 
+Il couvre trois familles de messages :
+
+| Famille | Produit par | Consommé par | Section |
+|---|---|---|---|
+| **Signaux normalisés** (`RawSignal`) | Ingestion (Node-RED) | Détection, historisation | §1 à §5 |
+| **Événements de domaine** (pré-confirmation, alerte critique) | Détection | Notification, API, appli senior | §6 |
+| **Messages rejetés** (file de rejet / DLQ) | Ingestion | Supervision, débogage | §7 |
+
+Les topics MQTT sur lesquels circulent ces messages sont définis dans [topics-mqtt.md](topics-mqtt.md). Les versions lisibles par machine (JSON Schema + types TypeScript) sont décrites au §8.
+
 ---
 
 ## 1. Structure générale (enveloppe + payload)
@@ -15,7 +25,7 @@ Chaque événement est un objet JSON composé de **champs communs** (l'enveloppe
   "sensorId": "watch-001",
   "type": "FALL_IMPACT",
   "timestamp": "2026-01-15T14:32:08.000Z",
-  "payload": { "impactForce": 9.8 }
+  "payload": { "value": 9.8, "unit": "g" }
 }
 ```
 
@@ -192,7 +202,8 @@ Le `SENSOR_HEARTBEAT` ne signale jamais lui-même une déconnexion : un capteur 
 ## 5. Règles
 
 - **Format des dates** : toujours ISO 8601 en UTC (suffixe `Z`). Les conversions d'affichage (heure locale) sont faites côté frontend, jamais dans l'événement.
-- **Champs obligatoires** : tout événement sans un des champs communs est rejeté par l'ingestion (voir la file de rejet / DLQ si elle est mise en place).
+- **Champs obligatoires** : tout événement sans un des champs communs est rejeté par l'ingestion et publié dans la file de rejet (voir §7).
+- **Identifiants** : `seniorId` et `sensorId` ne contiennent que des lettres, chiffres, `-` et `_`. Ils servent dans les noms de topics MQTT, où `/`, `+` et `#` sont des caractères réservés.
 - **Pas de type inconnu** : un `type` hors de la liste §2 est rejeté.
 - **Cohérence avec le DDD** : l'enum `SignalType` de ce document et celle du document DDD doivent rester identiques. Ajouter un type se répercute dans les deux.
 - **Le `payload` suit son type** : la détection se fie au `type` pour savoir comment lire le `payload`.

@@ -16,9 +16,6 @@ export type SignalType = (typeof SignalType)[keyof typeof SignalType];
 export const PressureState = { PRESSED: 'PRESSED', RELEASED: 'RELEASED' } as const;
 export type PressureState = (typeof PressureState)[keyof typeof PressureState];
 
-export const SensorStatus = { OK: 'OK', LOW_BATTERY: 'LOW_BATTERY', FAULT: 'FAULT' } as const;
-export type SensorStatus = (typeof SensorStatus)[keyof typeof SensorStatus];
-
 export interface PirMotionPayload {
   room: string;
 }
@@ -30,12 +27,14 @@ export interface PressurePlatePayload {
 }
 
 export interface HeartRatePayload {
-  bpm: number;
+  value: number;
+  unit: 'bpm';
 }
 
 export interface FallImpactPayload {
-  /** Intensité de l'impact, en g. */
-  impactForce: number;
+  value: number;
+  /** Accélération de la pesanteur, pas des grammes. */
+  unit: 'g';
 }
 
 export type HelpButtonPayload = Record<string, never>;
@@ -48,7 +47,7 @@ export interface CancelAlertPayload {
 export interface SensorHeartbeatPayload {
   /** Pourcentage, de 0 à 100. */
   batteryLevel: number;
-  status: SensorStatus;
+  unit: '%';
 }
 
 export interface SignalPayloadByType {
