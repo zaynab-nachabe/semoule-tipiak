@@ -62,11 +62,11 @@ Valeurs autorisées pour le champ `type` :
 
 ### `PRESSURE_PLATE`
 ```json
-{ "room": "chambre", "location": "lit", "state": "PRESSED" }
+{ "location": "lit", "state": "PRESSED" }
 ```
 | Champ | Type | Description |
 |---|---|---
-| `location` | string | Emplacement précis de la plaque dans la pièce (`lit`, `fauteuil`, `seuil`…). |
+| `location` | string | Emplacement précis de la plaque (dans la pièce, ou l'équipement `lit`, `fauteuil`, `seuil`…). |
 | `state` | string (enum) | `PRESSED` (quelqu'un monte dessus) ou `RELEASED` (la personne en descend). |
 
 Une plaque de pression émet un événement à chaque **changement d'état**, pas en continu. La durée passée sur la plaque (ex. temps passé au lit) se déduit de l'écart entre le `PRESSED` et le `RELEASED` qui suit.
