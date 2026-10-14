@@ -62,12 +62,11 @@ Valeurs autorisées pour le champ `type` :
 
 ### `PRESSURE_PLATE`
 ```json
-{ "room": "chambre", "location": "lit", "state": "PRESSED" }
+{ "location": "lit", "state": "PRESSED" }
 ```
 | Champ | Type | Description |
-|---|---|---|
-| `room` | string | Pièce où se trouve la plaque. Sert, comme pour `PIR_MOTION`, à reconstruire la position dans le logement. |
-| `location` | string | Emplacement précis de la plaque dans la pièce (`lit`, `fauteuil`, `seuil`…). |
+|---|---|---
+| `location` | string | Emplacement précis de la plaque (dans la pièce, ou l'équipement `lit`, `fauteuil`, `seuil`…). |
 | `state` | string (enum) | `PRESSED` (quelqu'un monte dessus) ou `RELEASED` (la personne en descend). |
 
 Une plaque de pression émet un événement à chaque **changement d'état**, pas en continu. La durée passée sur la plaque (ex. temps passé au lit) se déduit de l'écart entre le `PRESSED` et le `RELEASED` qui suit.
@@ -75,25 +74,25 @@ Une plaque de pression émet un événement à chaque **changement d'état**, pa
 ### `HEART_RATE`
 ```json
 { 
-  "heartRate": 72,
+  "value": 72,
   "unit": "bpm"
 }
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `heartRate` | number | Valeur de la fréquence cardiaque. |
+| `value` | number | Valeur de la fréquence cardiaque. |
 | `unit` | string | Unité de mesure (ici `bpm` pour battements par minute). |
 
 ### `FALL_IMPACT`
 ```json
 { 
-  "impactForce": 9.8, 
+  "value": 9.8, 
   "unit": "g" 
 }
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `impactForce` | number | Intensité de l'impact détecté. |
+| `value` | number | Intensité de l'impact détecté. |
 | `unit` | string | Unité de mesure (ici `g` pour grammes). Permet de filtrer les chocs mineurs. |
 
 ### `HELP_BUTTON`
@@ -113,14 +112,16 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
 ### `SENSOR_HEARTBEAT`
 ```json
 {
-  "batteryLevel": 84,
+  "value": 84,
   "unit": "%"
 }
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `batteryLevel` | number | Niveau de batterie en pourcentage. |
+| `value` | number | Niveau de batterie en pourcentage. |
 | `unit` | string | Unité de mesure (ici `%` pour pourcentage). |
+
+Le `SENSOR_HEARTBEAT` ne signale jamais lui-même une déconnexion : un capteur hors service ne peut pas émettre. C'est la détection qui conclut à une panne lorsqu'un capteur cesse d'envoyer son signal de vie pendant un délai donné (voir la matrice des risques, R1 « capteur muet »).
 
 ---
 
@@ -182,7 +183,7 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
   "sensorId": "pir-chambre",
   "type": "SENSOR_HEARTBEAT",
   "timestamp": "2026-01-15T14:35:00.000Z",
-  "payload": { "batteryLevel": 12, "status": "LOW_BATTERY" }
+  "payload": { "value": 12, "unit": "%"}
 }
 ```
 
@@ -193,5 +194,6 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
 - **Format des dates** : toujours ISO 8601 en UTC (suffixe `Z`). Les conversions d'affichage (heure locale) sont faites côté frontend, jamais dans l'événement.
 - **Champs obligatoires** : tout événement sans un des champs communs est rejeté par l'ingestion (voir la file de rejet / DLQ si elle est mise en place).
 - **Pas de type inconnu** : un `type` hors de la liste §2 est rejeté.
+- **Cohérence avec le DDD** : l'enum `SignalType` de ce document et celle du document DDD doivent rester identiques. Ajouter un type se répercute dans les deux.
 - **Le `payload` suit son type** : la détection se fie au `type` pour savoir comment lire le `payload`.
 - **Évolutivité** : ajouter un capteur ou un type de signal se fait en complétant ce document, puis en adaptant la normalisation Node-RED. Les autres services n'ont à changer que s'ils traitent le nouveau type.
