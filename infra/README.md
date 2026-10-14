@@ -12,6 +12,9 @@ Socle technique du projet, lancé avec Docker Compose. Contient pour l'instant l
 Depuis la **racine du projet** :
 
 ```bash
+# Créer le fichier de variables d'environnement (une seule fois)
+cp .env.example .env
+
 # Lancer l'infrastructure
 docker compose up
 ```
@@ -34,7 +37,7 @@ Les services communiquent entre eux par leur **nom** sur le réseau Docker commu
 docker compose ps        # les trois services doivent être "Up"
 ```
 
-Puis ouvrir http://localhost:1880 : l'éditeur Node-RED doit s'afficher.
+Puis ouvrir http://localhost:1880 : l'éditeur Node-RED doit s'afficher, avec les onglets **Ingestion** et **Simulateur**. Pour tester le pipeline avec des capteurs simulés, voir [services/ingestion/README.md](../services/ingestion/README.md).
 
 ## Arrêter
 

@@ -46,3 +46,6 @@ coverage/
 services/ingestion/.config.*
 services/ingestion/.config.*.backup
 services/ingestion/.sessions.json
+services/ingestion/.flows*.json.backup
+services/ingestion/lib/
+services/ingestion/context/

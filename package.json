@@ -1,0 +1,15 @@
+{
+  "name": "semoule-tipiak",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Détection de chute et d'inactivité anormale chez la personne âgée",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "services/detection",
+    "services/notification"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

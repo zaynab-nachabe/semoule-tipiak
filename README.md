@@ -29,7 +29,7 @@ Les trois personas ont des besoins réellement différents, ce qui justifie **tr
 
 | Donnée | Source | Nature |
 |---|---|---|
-| Mouvement / présence par pièce | Détecteurs PIR (détecteurs de mouvement), plaques de pression, contacts de porte | Événementiel |
+| Mouvement / présence par pièce | Détecteurs PIR (détecteurs de mouvement), plaques de pression (lit, fauteuil, seuil de pièce) | Événementiel |
 | Fréquence cardiaque | Montre / bracelet connecté | Mesure périodique (~1/min) |
 | Détection de chute (impact) | Accéléromètre de la montre | Événement ponctuel |
 | Demande d'aide / annulation d'alerte | Bouton de la montre ou appli | Événement ponctuel |
@@ -57,6 +57,17 @@ Le système maintient un **profil d'activité habituel** par personne (routine p
 
 Voir le fichier dédié : [Présentation de l'architecture](docs/Architecture.md)
 
+### Stack technique
+
+| Couche | Technologie | Rôle |
+|---|---|---|
+| Capteurs → système | **MQTT** (broker Mosquitto) pour les capteurs fixes, **HTTP** pour la montre | Protocoles imposés par le matériel |
+| Ingestion | **Node-RED** | Réception MQTT / HTTP, normalisation, rejet des messages invalides |
+| Messagerie interne | **MQTT** (le même broker Mosquitto) | Signaux normalisés, événements de domaine, alertes |
+| Stockage | **PostgreSQL** | Profils, relations et consentements, seuils, mesures, journal des alertes |
+| API | **NestJS** | REST + WebSocket vers les frontends, droits par rôle |
+| Conteneurisation | **Docker Compose** | Environnement de développement |
+
 ## 5. Matrice des risques
 
 **Matrice d'analyse des risques** : capteur déconnecté, fausse alerte, latence d'alerte, perte de données de santé (RGPD)
@@ -65,7 +76,7 @@ Voir le fichier dédié : [Présentation de la matrice des risques](docs/Matrice
 
 ## 6. Domain-Driven Design (DDD)
 
-Voir le fichier dédié : [Domain-Driven Design](chemin/vers/le/fichier)
+Voir le fichier dédié : [Domain-Driven Design](docs/DDD_specifications.md)
 
 ## Points à approfondir
 
