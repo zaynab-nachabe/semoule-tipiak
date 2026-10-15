@@ -1,4 +1,7 @@
-// Noms des topics MQTT (docs/topics-mqtt.md). Ne pas écrire les topics à la main dans les services.
+/**
+ * Noms des topics MQTT (docs/topics-mqtt.md)
+ * Ne pas écrire les topics à la main dans les services.
+ */
 
 import type { TopicSafeId } from './common.js';
 import type { DomainEventType } from './domain-events.js';
@@ -6,7 +9,7 @@ import type { SignalType } from './signals.js';
 
 export const Topics = {
   /** Message brut d'un capteur fixe, avant normalisation. */
-  sensorRaw: (sensorId: TopicSafeId): string => `zigbee2mqtt/${sensorId}`,
+  sensorRaw: (sensorId: TopicSafeId): string => `sensors/${sensorId}`,
   /** Signal normalisé. */
   signal: (seniorId: TopicSafeId, type: SignalType): string => `signals/${seniorId}/${type}`,
   /** Événement de domaine émis par la détection. */
@@ -17,9 +20,12 @@ export const Topics = {
 
 /** Abonnements par service, avec jokers MQTT. */
 export const Subscriptions = {
-  ingestion: 'zigbee2mqtt/+',
+  ingestion: 'sensors/+',
   detection: 'signals/+/+',
-  notification: ['alerts/+/CriticalAlertGenerated', 'alerts/+/PreConfirmationRequested'],
+  notification: [
+    'alerts/+/CriticalAlertGenerated',
+    'alerts/+/PreConfirmationRequested',
+  ],
   apiGateway: 'alerts/#',
   history: 'signals/#',
 } as const;

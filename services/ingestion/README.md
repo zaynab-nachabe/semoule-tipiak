@@ -3,7 +3,7 @@
 Passerelle d'entrée du système. Elle reçoit les messages bruts des capteurs, les **normalise** vers le format commun ([docs/format-evenements.md](../../docs/format-evenements.md)) et les publie sur le broker MQTT. Aucune logique de détection n'est placée ici.
 
 ```
-capteurs fixes ─ MQTT zigbee2mqtt/{sensorId} ─┐
+capteurs fixes ─ MQTT sensors/{sensorId} ─┐
                                               ├─► Adapter ─► Normaliser ─┬─► signals/{seniorId}/{type}
 montre ─ HTTP POST /ingest/watch ─────────────┘                          └─► ingestion/rejected
 ```
@@ -27,7 +27,7 @@ On peut aussi publier à la main :
 
 ```bash
 # capteur fixe, via le broker
-docker exec mosquitto mosquitto_pub -t zigbee2mqtt/pir-cuisine -m '{"occupancy":true}'
+docker exec mosquitto mosquitto_pub -t sensors/pir-cuisine -m '{"occupancy":true}'
 # écouter le résultat
 docker exec mosquitto mosquitto_sub -v -t 'signals/#' -t 'ingestion/rejected'
 # montre, via HTTP
@@ -37,9 +37,9 @@ curl -X POST http://localhost:1880/ingest/watch -H 'Content-Type: application/js
 
 ## Formats bruts acceptés
 
-### Capteurs fixes (MQTT, topic `zigbee2mqtt/{sensorId}`)
+### Capteurs fixes (MQTT, topic `sensors/{sensorId}`)
 
-Format de Zigbee2MQTT : un objet JSON par message.
+Format attendu : un objet JSON par message.
 
 | Capteur | Message | Signal produit |
 |---|---|---|
@@ -69,7 +69,8 @@ Réponse HTTP : **202** `{"accepted": true, "eventId": "…"}` si le signal est 
 
 ## Rejets
 
-Un message qui ne peut pas être normalisé n'est jamais perdu en silence : il part sur `ingestion/rejected` avec le motif (format §7 du document). Motifs produits :
+Un message qui ne peut pas être normalisé n'est jamais perdu en silence : il part sur `ingestion/rejected` avec le motif (format §7 du document). 
+Motifs produits :
 
 | Motif | Cas |
 |---|---|
@@ -82,13 +83,3 @@ Un message qui ne peut pas être normalisé n'est jamais perdu en silence : il p
 ## Registre des capteurs
 
 Le lien `sensorId` → personne (`seniorId`), pièce et type de capteur est défini au démarrage du nœud **Normaliser** (onglet *On Start* du nœud, ou *Au démarrage* en français). Pour ajouter un capteur, ajouter une ligne dans ce registre. Dans une version ultérieure, ce registre viendra de PostgreSQL (profils et capteurs de chaque senior) plutôt que d'être écrit dans le flow.
-
-## Tests automatiques
-
-La CI exécute le code des nœuds du flow (sans Node-RED) sur une trentaine de messages, valides et invalides, et vérifie que chaque sortie respecte les JSON Schemas de [`packages/shared-types`](../../packages/shared-types). En local :
-
-```bash
-npm install && npm test
-```
-
-> Si vous modifiez le flow dans l'éditeur Node-RED, vérifiez que `flows.json` reste valide avec `npm test` avant de le commiter. Les noms des nœuds `Adapter MQTT`, `Adapter HTTP`, `Normaliser` et `Réponse HTTP` sont utilisés par les tests : ne pas les renommer sans adapter `packages/shared-types/test/contract.test.mjs`.
