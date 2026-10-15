@@ -1,0 +1,176 @@
+// Schéma de la base — lot B, issue B1.
+// Base relationnelle du contexte "Profile & Consent Management".
+// Génère le client Prisma (types TS) à partir de ce fichier.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Énumérations
+// ─────────────────────────────────────────────────────────────
+
+/// Rôle principal d'un compte. SENIOR = personne suivie,
+/// FAMILY = proche, MEDICAL = équipe soignante.
+enum Role {
+  SENIOR
+  FAMILY
+  MEDICAL
+}
+
+/// Cycle de vie du consentement d'une relation de suivi.
+/// Le consentement doit être prouvable, traçable et révocable (RGPD).
+enum ConsentStatus {
+  PENDING    // demandé, pas encore accordé
+  GRANTED    // accordé, relation active
+  REVOKED    // retiré, relation inactive
+}
+
+/// Motif d'une alerte (aligné avec AlertReason de shared-types).
+enum AlertReason {
+  FALL_DETECTED
+  PROLONGED_INACTIVITY
+  HELP_REQUESTED
+}
+
+/// Statut d'une alerte au fil de son cycle de vie.
+enum AlertStatus {
+  PRE_CONFIRMING
+  ESCALATED
+  RESOLVED
+}
+
+/// Gravité (aligné avec Severity de shared-types).
+enum Severity {
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ─────────────────────────────────────────────────────────────
+// Comptes et personnes
+// ─────────────────────────────────────────────────────────────
+
+/// Un compte utilisateur. Toute personne (senior, famille, médical)
+/// en possède un pour se connecter.
+model Person {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         Role
+  createdAt    DateTime @default(now())
+
+  // Si cette personne est un senior suivi, le profil correspondant.
+  seniorProfile Senior?
+
+  // Relations de suivi où cette personne est l'aidant/soignant.
+  caringRelationships CareRelationship[] @relation("Caregiver")
+
+  @@map("persons")
+}
+
+/// Profil d'un senior suivi. Un Senior EST une Person (1-1),
+/// enrichie des données de suivi.
+model Senior {
+  id        String   @id @default(uuid())
+  personId  String   @unique
+  person    Person   @relation(fields: [personId], references: [id])
+  createdAt DateTime @default(now())
+
+  // Qui suit ce senior (familles, soignants) via des relations consenties.
+  relationships CareRelationship[] @relation("TrackedSenior")
+  thresholds    ToleranceThreshold[]
+  contacts      EmergencyContact[]
+  alerts        Alert[]
+
+  @@map("seniors")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Relation de suivi avec consentement (la table pivot)
+// ─────────────────────────────────────────────────────────────
+
+/// Lie un aidant/soignant (Person) à un Senior suivi.
+/// Porte le consentement et son cycle de vie.
+/// C'est sur cette table que repose le double verrou d'autorisation
+/// (rôle × relation active consentie).
+model CareRelationship {
+  id         String   @id @default(uuid())
+
+  seniorId   String
+  senior     Senior   @relation("TrackedSenior", fields: [seniorId], references: [id])
+
+  caregiverId String
+  caregiver   Person  @relation("Caregiver", fields: [caregiverId], references: [id])
+
+  // Nature du lien : un proche (FAMILY) ou un soignant (MEDICAL).
+  relationType  Role
+
+  // Consentement : état, horodatages, auteur de la demande.
+  consentStatus ConsentStatus @default(PENDING)
+  consentedAt   DateTime?
+  revokedAt     DateTime?
+  createdBy     String        // id de la personne qui a initié le lien (traçabilité)
+
+  createdAt     DateTime      @default(now())
+
+  // Un même couple (senior, aidant) n'a qu'une relation.
+  @@unique([seniorId, caregiverId])
+  @@map("care_relationships")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Configuration de détection (éditée par le médical)
+// ─────────────────────────────────────────────────────────────
+
+/// Seuil de tolérance configuré pour un senior.
+model ToleranceThreshold {
+  id               String   @id @default(uuid())
+  seniorId         String
+  senior           Senior   @relation(fields: [seniorId], references: [id])
+
+  condition        String   // ex. "MAX_INACTIVITY_MINUTES"
+  durationInMinutes Int
+  severity         Severity
+
+  @@map("tolerance_thresholds")
+}
+
+/// Contact d'urgence d'un senior.
+model EmergencyContact {
+  id        String   @id @default(uuid())
+  seniorId  String
+  senior    Senior   @relation(fields: [seniorId], references: [id])
+
+  fullName  String
+  phone     String
+  priority  Int      @default(1) // ordre d'appel
+
+  @@map("emergency_contacts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Journal des alertes
+// ─────────────────────────────────────────────────────────────
+
+/// Trace persistante d'une alerte (le domaine la génère, on l'historise ici).
+model Alert {
+  id               String       @id @default(uuid())
+  seniorId         String
+  senior           Senior       @relation(fields: [seniorId], references: [id])
+
+  reason           AlertReason
+  status           AlertStatus
+  severity         Severity?    // null tant que non escaladée
+  createdAt        DateTime     @default(now())
+  acknowledgedAt   DateTime?    // renseigné quand le médical prend en charge
+  resolvedAt       DateTime?
+
+  @@map("alerts")
+}

@@ -1,6 +1,14 @@
 {
   "name": "api-gateway",
+  "devDependencies": {
+    "prisma": "^5.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
   "dependencies": {
-    "@project/shared-types": "*"
+    "@prisma/client": "^5.22.0"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   }
 }

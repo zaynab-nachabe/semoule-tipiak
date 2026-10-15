@@ -28,7 +28,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"   # port hôte surchargeable (ex. si un Postgres local occupe déjà 5432)
     volumes:
       - pgdata:/var/lib/postgresql/data   # persistance des données entre les redémarrages
     networks:
