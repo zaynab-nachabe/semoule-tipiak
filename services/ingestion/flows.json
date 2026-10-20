@@ -1,0 +1,836 @@
+[
+    {
+        "id": "tab_ingestion",
+        "type": "tab",
+        "label": "Ingestion",
+        "disabled": false,
+        "info": "Capteurs (MQTT) et montre (HTTP) -> signaux normalisés (docs/format-evenements.md)."
+    },
+    {
+        "id": "tab_sim",
+        "type": "tab",
+        "label": "Simulateur",
+        "disabled": false,
+        "info": "Capteurs simulés : cliquer sur un bouton inject pour envoyer un message. Les résultats s'affichent dans le panneau debug."
+    },
+    {
+        "id": "broker_mosquitto",
+        "type": "mqtt-broker",
+        "name": "Mosquitto",
+        "broker": "mosquitto",
+        "port": "1883",
+        "clientid": "nodered-ingestion",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": false,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "cmt_ingestion",
+        "type": "comment",
+        "z": "tab_ingestion",
+        "name": "Ingestion : MQTT (capteurs fixes) + HTTP (montre) -> signals/{seniorId}/{type}",
+        "info": "Voir services/ingestion/README.md pour les formats bruts acceptés.",
+        "x": 330,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "in_sensors",
+        "type": "mqtt in",
+        "z": "tab_ingestion",
+        "name": "Capteurs fixes",
+        "topic": "sensors/+",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "broker_mosquitto",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 120,
+        "wires": [
+            [
+                "adapt_mqtt"
+            ]
+        ]
+    },
+    {
+        "id": "http_watch",
+        "type": "http in",
+        "z": "tab_ingestion",
+        "name": "POST /ingest/watch",
+        "url": "/ingest/watch",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 140,
+        "y": 220,
+        "wires": [
+            [
+                "adapt_http"
+            ]
+        ]
+    },
+    {
+        "id": "adapt_mqtt",
+        "type": "function",
+        "z": "tab_ingestion",
+        "name": "Adapter MQTT",
+        "func": "// Entrée MQTT brute -> enveloppe commune { source, sensorId, body, rawText }\nconst parts = String(msg.topic).split('/');\nconst sensorId = parts[parts.length - 1];\n\nconst p = msg.payload;\nconst rawText = typeof p === 'string' ? p : Buffer.isBuffer(p) ? p.toString('utf8') : JSON.stringify(p);\n\nmsg.raw = { source: { protocol: 'MQTT', origin: msg.topic }, sensorId: sensorId, body: p, rawText: rawText };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 120,
+        "wires": [
+            [
+                "normalise"
+            ]
+        ]
+    },
+    {
+        "id": "adapt_http",
+        "type": "function",
+        "z": "tab_ingestion",
+        "name": "Adapter HTTP",
+        "func": "// Entrée HTTP brute (appli compagnon de la montre) -> enveloppe commune\nconst body = msg.payload;\nconst isObject = body !== null && typeof body === 'object' && !Array.isArray(body);\nconst text = JSON.stringify(body);\n\nmsg.raw = {\n    source: { protocol: 'HTTP', origin: 'POST /ingest/watch' },\n    sensorId: isObject ? body.sensorId : undefined,\n    body: body,\n    rawText: text === undefined ? '' : text\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 220,
+        "wires": [
+            [
+                "normalise"
+            ]
+        ]
+    },
+    {
+        "id": "normalise",
+        "type": "function",
+        "z": "tab_ingestion",
+        "name": "Normaliser",
+        "func": "// Normalisation : entrée brute -> signal conforme à docs/format-evenements.md (§1 à §3)\n// Sortie 1 : signal valide, publié sur signals/{seniorId}/{type}\n// Sortie 2 : message rejeté, publié sur ingestion/rejected (§7)\n// Aucune sortie : message sans intérêt métier (ex. fin de détection d'un PIR)\nconst ISO_UTC = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$/;\nconst WATCH_EVENTS = ['HEART_RATE', 'FALL_IMPACT', 'HELP_BUTTON', 'CANCEL_ALERT', 'SENSOR_HEARTBEAT'];\nconst isNum = (v) => typeof v === 'number' && Number.isFinite(v);\n\nfunction uuid() {\n    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n        const r = Math.floor(Math.random() * 16);\n        return (c === 'x' ? r : (r & 3) | 8).toString(16);\n    });\n}\n\nconst raw = msg.raw;\nconst sensorId = raw.sensorId;\nconst body = raw.body;\n\nfunction reject(reason, details) {\n    msg.topic = 'ingestion/rejected';\n    msg.qos = 1;\n    msg.retain = false;\n    msg.payload = {\n        eventId: uuid(),\n        timestamp: new Date().toISOString(),\n        source: raw.source,\n        reason: reason,\n        details: details,\n        originalMessage: raw.rawText\n    };\n    delete msg.raw;\n    return [null, msg];\n}\n\nif (sensorId === undefined || sensorId === null || sensorId === '') {\n    return reject('MISSING_FIELD', 'sensorId manquant');\n}\nif (typeof body === 'string') {\n    return reject('INVALID_JSON', 'le message n\\'est pas du JSON valide');\n}\nif (body === null || typeof body !== 'object' || Array.isArray(body)) {\n    return reject('INVALID_PAYLOAD', 'le message doit être un objet JSON');\n}\n\nconst registry = global.get('sensorRegistry') || {};\nconst sensor = Object.prototype.hasOwnProperty.call(registry, sensorId) ? registry[sensorId] : undefined;\nif (!sensor) {\n    return reject('UNKNOWN_SENSOR', 'capteur \\'' + sensorId + '\\' absent du registre');\n}\nif (sensor.channel !== raw.source.protocol) {\n    return reject('UNKNOWN_SENSOR', 'le capteur \\'' + sensorId + '\\' doit écrire en ' + sensor.channel + ', pas en ' + raw.source.protocol);\n}\n\nlet timestamp = new Date().toISOString();\nif (body.timestamp !== undefined) {\n    if (typeof body.timestamp !== 'string' || !ISO_UTC.test(body.timestamp)) {\n        return reject('INVALID_PAYLOAD', 'timestamp doit être une date ISO 8601 en UTC (suffixe Z)');\n    }\n    timestamp = body.timestamp;\n}\n\nfunction accept(type, payload) {\n    msg.topic = 'signals/' + sensor.seniorId + '/' + type;\n    msg.qos = 1;\n    msg.retain = false;\n    msg.payload = {\n        eventId: uuid(),\n        seniorId: sensor.seniorId,\n        sensorId: sensorId,\n        type: type,\n        timestamp: timestamp,\n        payload: payload\n    };\n    delete msg.raw;\n    return [msg, null];\n}\n\nfunction heartbeat() {\n    if (!isNum(body.battery) || body.battery < 0 || body.battery > 100) {\n        return reject('INVALID_PAYLOAD', 'battery doit être un nombre entre 0 et 100');\n    }\n    return accept('SENSOR_HEARTBEAT', { value: body.battery, unit: '%' });\n}\n\nif (sensor.kind === 'PIR') {\n    if ('occupancy' in body) {\n        if (typeof body.occupancy !== 'boolean') {\n            return reject('INVALID_PAYLOAD', 'occupancy doit être un booléen');\n        }\n        if (!body.occupancy) { return null; }\n        return accept('PIR_MOTION', { room: sensor.room });\n    }\n    if ('battery' in body) { return heartbeat(); }\n    return reject('MISSING_FIELD', 'occupancy ou battery attendu');\n}\n\nif (sensor.kind === 'PRESSURE_PLATE') {\n    // Plaque câblée comme un contact : contact=false -> quelqu'un appuie, contact=true -> relâché\n    if ('contact' in body) {\n        if (typeof body.contact !== 'boolean') {\n            return reject('INVALID_PAYLOAD', 'contact doit être un booléen');\n        }\n        return accept('PRESSURE_PLATE', {\n            room: sensor.room,\n            location: sensor.location,\n            state: body.contact ? 'RELEASED' : 'PRESSED'\n        });\n    }\n    if ('battery' in body) { return heartbeat(); }\n    return reject('MISSING_FIELD', 'contact ou battery attendu');\n}\n\nif (sensor.kind === 'WATCH') {\n    const event = body.event;\n    if (event === undefined) { return reject('MISSING_FIELD', 'event manquant'); }\n    if (!WATCH_EVENTS.includes(event)) {\n        return reject('UNKNOWN_TYPE', 'event \\'' + event + '\\' non géré pour une montre');\n    }\n    switch (event) {\n        case 'HEART_RATE':\n            if (!isNum(body.value) || body.value < 0 || body.value > 300) {\n                return reject('INVALID_PAYLOAD', 'value doit être un nombre entre 0 et 300');\n            }\n            return accept('HEART_RATE', { value: body.value, unit: 'bpm' });\n        case 'FALL_IMPACT':\n            if (!isNum(body.value) || body.value < 0) {\n                return reject('INVALID_PAYLOAD', 'value doit être un nombre positif');\n            }\n            return accept('FALL_IMPACT', { value: body.value, unit: 'g' });\n        case 'HELP_BUTTON':\n            return accept('HELP_BUTTON', {});\n        case 'CANCEL_ALERT':\n            if (body.alertId === undefined) { return accept('CANCEL_ALERT', {}); }\n            if (typeof body.alertId !== 'string' || body.alertId === '') {\n                return reject('INVALID_PAYLOAD', 'alertId doit être une chaîne non vide');\n            }\n            return accept('CANCEL_ALERT', { alertId: body.alertId });\n        default:\n            if (body.battery === undefined) { return reject('MISSING_FIELD', 'battery manquant'); }\n            return heartbeat();\n    }\n}\n\nreturn reject('UNKNOWN_SENSOR', 'type de capteur \\'' + sensor.kind + '\\' non géré');",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "// Registre des capteurs connus : sensorId -> senior, type de capteur, canal d'arrivée.\n// Un message d'un capteur absent de cette liste est rejeté (UNKNOWN_SENSOR).\nglobal.set('sensorRegistry', {\n    'pir-cuisine':  { seniorId: 'senior-001', channel: 'MQTT', kind: 'PIR', room: 'cuisine' },\n    'pir-salon':    { seniorId: 'senior-001', channel: 'MQTT', kind: 'PIR', room: 'salon' },\n    'pir-chambre':  { seniorId: 'senior-001', channel: 'MQTT', kind: 'PIR', room: 'chambre' },\n    'plate-lit':    { seniorId: 'senior-001', channel: 'MQTT', kind: 'PRESSURE_PLATE', room: 'chambre', location: 'lit' },\n    'plate-fauteuil': { seniorId: 'senior-001', channel: 'MQTT', kind: 'PRESSURE_PLATE', room: 'salon', location: 'fauteuil' },\n    'watch-001':    { seniorId: 'senior-001', channel: 'HTTP', kind: 'WATCH' }\n});",
+        "finalize": "",
+        "libs": [],
+        "x": 570,
+        "y": 170,
+        "wires": [
+            [
+                "out_signals",
+                "http_reply"
+            ],
+            [
+                "out_rejected",
+                "http_reply"
+            ]
+        ]
+    },
+    {
+        "id": "http_reply",
+        "type": "function",
+        "z": "tab_ingestion",
+        "name": "Réponse HTTP",
+        "func": "// Répond à l'appelant HTTP (appli de la montre). Ignore les messages venus de MQTT.\nif (!msg.res) { return null; }\n\nconst rejected = msg.topic === 'ingestion/rejected';\nmsg.statusCode = rejected ? 422 : 202;\nmsg.payload = rejected\n    ? { accepted: false, reason: msg.payload.reason, details: msg.payload.details }\n    : { accepted: true, eventId: msg.payload.eventId };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 810,
+        "y": 270,
+        "wires": [
+            [
+                "http_resp"
+            ]
+        ]
+    },
+    {
+        "id": "out_signals",
+        "type": "mqtt out",
+        "z": "tab_ingestion",
+        "name": "signals/{seniorId}/{type}",
+        "topic": "",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "broker_mosquitto",
+        "x": 840,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "out_rejected",
+        "type": "mqtt out",
+        "z": "tab_ingestion",
+        "name": "ingestion/rejected",
+        "topic": "",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "broker_mosquitto",
+        "x": 830,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "http_resp",
+        "type": "http response",
+        "z": "tab_ingestion",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 1000,
+        "y": 270,
+        "wires": []
+    },
+    {
+        "id": "cmt_sim",
+        "type": "comment",
+        "z": "tab_sim",
+        "name": "Simulateur : chaque bouton envoie un message comme le ferait le vrai capteur",
+        "info": "Résultats dans le panneau debug (icône scarabée à droite).",
+        "x": 300,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "sim_pir_cuisine",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "PIR cuisine : mouvement",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "sensors/pir-cuisine",
+        "payload": "{\"occupancy\":true}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 100,
+        "wires": [
+            [
+                "sim_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "sim_pir_cuisine_off",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "PIR cuisine : fin de détection (ignoré)",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "sensors/pir-cuisine",
+        "payload": "{\"occupancy\":false}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 150,
+        "wires": [
+            [
+                "sim_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "sim_pir_chambre",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "PIR chambre : mouvement",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "sensors/pir-chambre",
+        "payload": "{\"occupancy\":true}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 200,
+        "wires": [
+            [
+                "sim_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "sim_plate_press",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "Plaque du lit : appui",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "sensors/plate-lit",
+        "payload": "{\"contact\":false}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 250,
+        "wires": [
+            [
+                "sim_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "sim_plate_release",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "Plaque du lit : relâchée",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "sensors/plate-lit",
+        "payload": "{\"contact\":true}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 300,
+        "wires": [
+            [
+                "sim_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "sim_pir_battery",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "PIR chambre : heartbeat, batterie 12 %",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "sensors/pir-chambre",
+        "payload": "{\"battery\":12}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 350,
+        "wires": [
+            [
+                "sim_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "sim_bad_unknown",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "ERREUR : capteur inconnu",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "sensors/pir-garage",
+        "payload": "{\"occupancy\":true}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 400,
+        "wires": [
+            [
+                "sim_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "sim_bad_json",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "ERREUR : JSON invalide",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "sensors/pir-cuisine",
+        "payload": "ceci n'est pas du json",
+        "payloadType": "str",
+        "x": 190,
+        "y": 450,
+        "wires": [
+            [
+                "sim_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "sim_bad_field",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "ERREUR : champ manquant",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "sensors/pir-cuisine",
+        "payload": "{\"linkquality\":120}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 500,
+        "wires": [
+            [
+                "sim_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "sim_mqtt_out",
+        "type": "mqtt out",
+        "z": "tab_sim",
+        "name": "Publier (topic du message)",
+        "topic": "",
+        "qos": "1",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "broker_mosquitto",
+        "x": 540,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "sim_watch_hr",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "Montre : fréquence cardiaque 72",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"sensorId\":\"watch-001\",\"event\":\"HEART_RATE\",\"value\":72}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 600,
+        "wires": [
+            [
+                "sim_http_req"
+            ]
+        ]
+    },
+    {
+        "id": "sim_watch_fall",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "Montre : chute (impact 9.8 g)",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"sensorId\":\"watch-001\",\"event\":\"FALL_IMPACT\",\"value\":9.8}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 650,
+        "wires": [
+            [
+                "sim_http_req"
+            ]
+        ]
+    },
+    {
+        "id": "sim_watch_help",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "Montre : bouton d'aide",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"sensorId\":\"watch-001\",\"event\":\"HELP_BUTTON\"}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 700,
+        "wires": [
+            [
+                "sim_http_req"
+            ]
+        ]
+    },
+    {
+        "id": "sim_watch_cancel",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "Montre : annulation « tout va bien »",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"sensorId\":\"watch-001\",\"event\":\"CANCEL_ALERT\",\"alertId\":\"alert-123\"}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 750,
+        "wires": [
+            [
+                "sim_http_req"
+            ]
+        ]
+    },
+    {
+        "id": "sim_watch_beat",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "Montre : heartbeat, batterie 84 %",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"sensorId\":\"watch-001\",\"event\":\"SENSOR_HEARTBEAT\",\"battery\":84}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 800,
+        "wires": [
+            [
+                "sim_http_req"
+            ]
+        ]
+    },
+    {
+        "id": "sim_watch_bad_type",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "ERREUR : type inconnu",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"sensorId\":\"watch-001\",\"event\":\"TEMPERATURE\",\"value\":37}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 850,
+        "wires": [
+            [
+                "sim_http_req"
+            ]
+        ]
+    },
+    {
+        "id": "sim_watch_bad_value",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "ERREUR : fréquence cardiaque 999",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"sensorId\":\"watch-001\",\"event\":\"HEART_RATE\",\"value\":999}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 900,
+        "wires": [
+            [
+                "sim_http_req"
+            ]
+        ]
+    },
+    {
+        "id": "sim_http_req",
+        "type": "http request",
+        "z": "tab_sim",
+        "name": "POST /ingest/watch",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://localhost:1880/ingest/watch",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 540,
+        "y": 740,
+        "wires": [
+            [
+                "dbg_http"
+            ]
+        ]
+    },
+    {
+        "id": "dbg_http",
+        "type": "debug",
+        "z": "tab_sim",
+        "name": "Réponse HTTP",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 770,
+        "y": 740,
+        "wires": []
+    },
+    {
+        "id": "in_dbg_signals",
+        "type": "mqtt in",
+        "z": "tab_sim",
+        "name": "signals/#",
+        "topic": "signals/#",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "broker_mosquitto",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 790,
+        "y": 100,
+        "wires": [
+            [
+                "dbg_signals"
+            ]
+        ]
+    },
+    {
+        "id": "dbg_signals",
+        "type": "debug",
+        "z": "tab_sim",
+        "name": "Signal normalisé",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1010,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "in_dbg_rejected",
+        "type": "mqtt in",
+        "z": "tab_sim",
+        "name": "ingestion/rejected",
+        "topic": "ingestion/rejected",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "broker_mosquitto",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 810,
+        "y": 160,
+        "wires": [
+            [
+                "dbg_rejected"
+            ]
+        ]
+    },
+    {
+        "id": "dbg_rejected",
+        "type": "debug",
+        "z": "tab_sim",
+        "name": "Message rejeté",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1030,
+        "y": 160,
+        "wires": []
+    }
+]
