@@ -84,21 +84,27 @@ Une plaque de pression émet un événement à chaque **changement d'état**, pa
 
 ### `HEART_RATE`
 ```json
-{ "value": 72, "unit": "bpm" }
+{ 
+  "value": 72,
+  "unit": "bpm"
+}
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `value` | number | Fréquence cardiaque mesurée. `0` est accepté : un signal plat est une information pour la détection, pas une erreur. |
-| `unit` | string | Unité de mesure : toujours `bpm` (battements par minute). |
+| `value` | number | Valeur de la fréquence cardiaque. |
+| `unit` | string | Unité de mesure (ici `bpm` pour battements par minute). |
 
 ### `FALL_IMPACT`
 ```json
-{ "value": 9.8, "unit": "g" }
+{ 
+  "value": 9.8, 
+  "unit": "g" 
+}
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `value` | number | Intensité de l'impact détecté. Permet de filtrer les chocs mineurs. |
-| `unit` | string | Unité de mesure : toujours `g` (accélération de la pesanteur, ≈ 9,81 m/s²), et non des grammes. |
+| `value` | number | Intensité de l'impact détecté. |
+| `unit` | string | Unité de mesure (ici `g` pour grammes). Permet de filtrer les chocs mineurs. |
 
 ### `HELP_BUTTON`
 ```json
@@ -117,16 +123,16 @@ Aucune donnée : l'événement lui-même suffit (le bouton a été pressé).
 ### `SENSOR_HEARTBEAT`
 ```json
 {
-  "batteryLevel": 84,
+  "value": 84,
   "unit": "%"
 }
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `batteryLevel` | number | Niveau de batterie, de 0 à 100. |
-| `unit` | string | Unité de mesure : toujours `%`. |
+| `value` | number | Niveau de batterie en pourcentage. |
+| `unit` | string | Unité de mesure (ici `%` pour pourcentage). |
 
-Le payload ne contient pas d'état (`OK`, `LOW_BATTERY`…) : c'est la détection qui déduit « batterie faible » à partir de `batteryLevel` et d'un seuil, et « capteur muet » de l'absence de heartbeat (risque R1 de la matrice des risques).
+Le `SENSOR_HEARTBEAT` ne signale jamais lui-même une déconnexion : un capteur hors service ne peut pas émettre. C'est la détection qui conclut à une panne lorsqu'un capteur cesse d'envoyer son signal de vie pendant un délai donné (voir la matrice des risques, R1 « capteur muet »).
 
 ---
 
@@ -188,7 +194,7 @@ Le payload ne contient pas d'état (`OK`, `LOW_BATTERY`…) : c'est la détectio
   "sensorId": "pir-chambre",
   "type": "SENSOR_HEARTBEAT",
   "timestamp": "2026-01-15T14:35:00.000Z",
-  "payload": { "batteryLevel": 12, "unit": "%" }
+  "payload": { "value": 12, "unit": "%"}
 }
 ```
 
@@ -197,9 +203,10 @@ Le payload ne contient pas d'état (`OK`, `LOW_BATTERY`…) : c'est la détectio
 ## 5. Règles
 
 - **Format des dates** : toujours ISO 8601 en UTC (suffixe `Z`). Les conversions d'affichage (heure locale) sont faites côté frontend, jamais dans l'événement.
-- **Champs obligatoires** : tout événement sans un des champs communs est rejeté par l'ingestion et publié dans la file de rejet (voir §7).
+- **Champs obligatoires** : tout événement sans un des champs communs est rejeté par l'ingestion et publié dans la file de rejet / DLQ (voir la file de rejet / DLQ si elle est mise en place).
 - **Identifiants** : `seniorId` et `sensorId` ne contiennent que des lettres, chiffres, `-` et `_`. Ils servent dans les noms de topics MQTT, où `/`, `+` et `#` sont des caractères réservés.
 - **Pas de type inconnu** : un `type` hors de la liste §2 est rejeté.
+- **Cohérence avec le DDD** : l'enum `SignalType` de ce document et celle du document DDD doivent rester identiques. Ajouter un type se répercute dans les deux.
 - **Le `payload` suit son type** : la détection se fie au `type` pour savoir comment lire le `payload`.
 - **Évolutivité** : ajouter un capteur ou un type de signal se fait en complétant ce document, puis en adaptant la normalisation Node-RED. Les autres services n'ont à changer que s'ils traitent le nouveau type.
 
@@ -350,7 +357,7 @@ Tout message que l'ingestion ne peut pas normaliser (JSON invalide, champ manqua
 {
   "eventId": "c9d8e7f6-0001-4000-8000-000000000201",
   "timestamp": "2026-01-15T14:40:00.000Z",
-  "source": { "protocol": "MQTT", "origin": "zigbee2mqtt/pir-cuisine" },
+  "source": { "protocol": "MQTT", "origin": "sensors/pir-cuisine" },
   "reason": "UNKNOWN_TYPE",
   "details": "type 'TEMPERATURE' absent de SignalType",
   "originalMessage": "{\"type\":\"TEMPERATURE\",\"value\":21.5}"

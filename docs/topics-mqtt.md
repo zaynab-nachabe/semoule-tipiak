@@ -7,7 +7,7 @@ Tous les échanges asynchrones passent par le broker **Mosquitto** (`mosquitto:1
 ## 1. Vue d'ensemble
 
 ```
-[capteurs Zigbee] ─► zigbee2mqtt/{sensorId} ─┐
+[capteurs simulés] ─► sensors/{sensorId} ─┐
                                              ├─► [Node-RED] ─┬─► signals/{seniorId}/{type} ─► [détection] ─► alerts/{seniorId}/{eventType} ─► [notification]
 [montre] ─► HTTP POST /ingest/watch ─────────┘               │                                                                         └─► [api-gateway] ─► WebSocket
                                                              └─► ingestion/rejected
@@ -19,19 +19,19 @@ Tous les échanges asynchrones passent par le broker **Mosquitto** (`mosquitto:1
 
 | Topic | Contenu | Format | Publié par | Abonnés |
 |---|---|---|---|---|
-| `zigbee2mqtt/{sensorId}` | Message brut d'un capteur fixe (PIR, plaque de pression) | Propre au capteur (non normalisé) | Zigbee2MQTT, ou le simulateur | Node-RED |
+| `sensors/{sensorId}` | Message brut d'un capteur fixe (PIR, plaque de pression) | Propre au capteur (non normalisé) | Le simulateur Node-RED | Node-RED |
 | `signals/{seniorId}/{type}` | Signal normalisé (`RawSignal`) | §1 à §3 de `format-evenements.md` | Node-RED | Détection, historisation |
 | `ingestion/rejected` | Message que Node-RED n'a pas pu normaliser | §7 de `format-evenements.md` | Node-RED | Supervision / débogage |
 | `alerts/{seniorId}/{eventType}` | Événement de domaine (pré-confirmation, alerte critique) | §6 de `format-evenements.md` | Détection | Notification, api-gateway |
 
 Exemples :
-- `zigbee2mqtt/pir-cuisine`
+- `sensors/pir-cuisine`
 - `signals/senior-001/FALL_IMPACT`
 - `alerts/senior-001/CriticalAlertGenerated`
 
-### Pourquoi `zigbee2mqtt/{sensorId}` en entrée
+### Pourquoi `sensors/{sensorId}` en entrée ?
 
-C'est la convention de nommage de Zigbee2MQTT (`zigbee2mqtt/{friendly_name}`), en donnant au capteur son `sensorId` comme nom. Les capteurs simulés publient sur ce même topic.
+C'est une convention de nommage simple et explicite pour nos capteurs. Les capteurs simulés publient directement sur ce topic, imitant le comportement d'un réseau de capteurs MQTT classique.
 
 ### Entrée HTTP (montre)
 
@@ -45,7 +45,7 @@ Les jokers MQTT permettent à chaque service de ne recevoir que ce qui le concer
 
 | Service | Abonnement | Reçoit |
 |---|---|---|
-| Node-RED | `zigbee2mqtt/+` | Tous les capteurs fixes |
+| Node-RED | `sensors/+` | Tous les capteurs fixes |
 | Détection | `signals/+/+` | Tous les signaux de tous les seniors |
 | Notification | `alerts/+/CriticalAlertGenerated` et `alerts/+/PreConfirmationRequested` | Les alertes à envoyer et les demandes de levée de doute à pousser sur la montre |
 | api-gateway | `alerts/#` | Tous les événements de domaine, relayés en WebSocket aux frontends |
@@ -60,5 +60,5 @@ Un frontend ne s'abonne jamais directement au broker : il passe par l'api-gatewa
 - **QoS 1** (« au moins une fois ») pour `signals/...`, `alerts/...` et `ingestion/rejected` : un message n'est pas perdu si le réseau coupe brièvement. Contrepartie : un message peut arriver **en double**, d'où le `eventId` unique qui permet aux abonnés d'ignorer un doublon.
 - **Sessions persistantes** (`clean session = false`, identifiant client fixe) pour la détection et la notification : si le service redémarre, le broker garde les messages QoS 1 arrivés entre-temps. Cela limite le risque R9 (perte de données non traitées) sans ajouter de file de messages dédiée.
 - **Pas de `retain`** : les messages sont des événements, pas des états. Un nouvel abonné ne doit pas recevoir une vieille alerte comme si elle venait d'arriver.
-- **Identifiants dans les topics** : `seniorId`, `sensorId` et `type` ne contiennent jamais `/`, `+` ni `#` (caractères réservés de MQTT). Les JSON Schemas l'imposent.
+- **Identifiants dans les topics** : `seniorId`, `sensorId` et `type` ne contiennent jamais `/`, `+` ni `#` (caractères réservés de MQTT). Notre typage strict l'impose.
 - **Constantes partagées** : les services TypeScript n'écrivent pas les noms de topics à la main, ils utilisent `packages/shared-types/src/topics.ts`.

@@ -46,7 +46,7 @@ export interface CancelAlertPayload {
 
 export interface SensorHeartbeatPayload {
   /** Pourcentage, de 0 à 100. */
-  batteryLevel: number;
+  value: number;
   unit: '%';
 }
 

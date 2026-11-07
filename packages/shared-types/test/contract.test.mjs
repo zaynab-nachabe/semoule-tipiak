@@ -98,7 +98,7 @@ const invalidSignals = {
   'fréquence cardiaque avec une mauvaise unité': { ...signal, type: 'HEART_RATE', payload: { value: 72, unit: 'g' } },
   'fréquence cardiaque au-delà de 300': { ...signal, type: 'HEART_RATE', payload: { value: 301, unit: 'bpm' } },
   'impact négatif': { ...signal, type: 'FALL_IMPACT', payload: { value: -1, unit: 'g' } },
-  'batterie au-delà de 100': { ...signal, type: 'SENSOR_HEARTBEAT', payload: { batteryLevel: 120, unit: '%' } },
+  'batterie au-delà de 100': { ...signal, type: 'SENSOR_HEARTBEAT', payload: { value: 120, unit: '%' } },
   'bouton d\'aide avec des données': { ...signal, type: 'HELP_BUTTON', payload: { x: 1 } },
 };
 
@@ -209,12 +209,11 @@ const outcome = (result) => {
 
 const cases = [
   // [libellé, résultat, type produit | motif de rejet | 'dropped']
-  ['PIR : mouvement', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"occupancy":true}'), 'signal', 'PIR_MOTION'],
-  ['PIR : fin de détection', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"occupancy":false}'), 'dropped'],
-  ['PIR : heartbeat', () => viaMqtt('zigbee2mqtt/pir-chambre', '{"battery":12}'), 'signal', 'SENSOR_HEARTBEAT'],
-  ['PIR : message de pont Zigbee2MQTT', () => viaMqtt('zigbee2mqtt/bridge', '{"state":"online"}'), 'dropped'],
-  ['plaque : appui', () => viaMqtt('zigbee2mqtt/plate-lit', '{"contact":false}'), 'signal', 'PRESSURE_PLATE'],
-  ['plaque : relâchée', () => viaMqtt('zigbee2mqtt/plate-lit', '{"contact":true}'), 'signal', 'PRESSURE_PLATE'],
+  ['PIR : mouvement', () => viaMqtt('sensors/pir-cuisine', '{"occupancy":true}'), 'signal', 'PIR_MOTION'],
+  ['PIR : fin de détection', () => viaMqtt('sensors/pir-cuisine', '{"occupancy":false}'), 'dropped'],
+  ['PIR : heartbeat', () => viaMqtt('sensors/pir-chambre', '{"battery":12}'), 'signal', 'SENSOR_HEARTBEAT'],
+  ['plaque : appui', () => viaMqtt('sensors/plate-lit', '{"contact":false}'), 'signal', 'PRESSURE_PLATE'],
+  ['plaque : relâchée', () => viaMqtt('sensors/plate-lit', '{"contact":true}'), 'signal', 'PRESSURE_PLATE'],
   ['montre : fréquence cardiaque', () => viaHttp({ sensorId: 'watch-001', event: 'HEART_RATE', value: 72 }), 'signal', 'HEART_RATE'],
   ['montre : fréquence cardiaque nulle', () => viaHttp({ sensorId: 'watch-001', event: 'HEART_RATE', value: 0 }), 'signal', 'HEART_RATE'],
   ['montre : chute', () => viaHttp({ sensorId: 'watch-001', event: 'FALL_IMPACT', value: 9.8 }), 'signal', 'FALL_IMPACT'],
@@ -224,14 +223,14 @@ const cases = [
   ['montre : heartbeat', () => viaHttp({ sensorId: 'watch-001', event: 'SENSOR_HEARTBEAT', battery: 84 }), 'signal', 'SENSOR_HEARTBEAT'],
   ['montre : horodatage fourni', () => viaHttp({ sensorId: 'watch-001', event: 'HELP_BUTTON', timestamp: '2026-01-15T14:32:08.000Z' }), 'signal', 'HELP_BUTTON'],
 
-  ['capteur inconnu', () => viaMqtt('zigbee2mqtt/pir-garage', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
-  ['montre écrivant en MQTT', () => viaMqtt('zigbee2mqtt/watch-001', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
+  ['capteur inconnu', () => viaMqtt('sensors/pir-garage', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
+  ['montre écrivant en MQTT', () => viaMqtt('sensors/watch-001', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
   ['PIR écrivant en HTTP', () => viaHttp({ sensorId: 'pir-cuisine', event: 'HELP_BUTTON' }), 'rejected', 'UNKNOWN_SENSOR'],
-  ['JSON invalide', () => viaMqtt('zigbee2mqtt/pir-cuisine', 'ceci n\'est pas du json'), 'rejected', 'INVALID_JSON'],
-  ['message qui n\'est pas un objet', () => viaMqtt('zigbee2mqtt/pir-cuisine', '42'), 'rejected', 'INVALID_PAYLOAD'],
-  ['PIR sans champ exploitable', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"linkquality":120}'), 'rejected', 'MISSING_FIELD'],
-  ['occupancy non booléen', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"occupancy":"oui"}'), 'rejected', 'INVALID_PAYLOAD'],
-  ['batterie hors limites', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"battery":150}'), 'rejected', 'INVALID_PAYLOAD'],
+  ['JSON invalide', () => viaMqtt('sensors/pir-cuisine', 'ceci n\'est pas du json'), 'rejected', 'INVALID_JSON'],
+  ['message qui n\'est pas un objet', () => viaMqtt('sensors/pir-cuisine', '42'), 'rejected', 'INVALID_PAYLOAD'],
+  ['PIR sans champ exploitable', () => viaMqtt('sensors/pir-cuisine', '{"linkquality":120}'), 'rejected', 'MISSING_FIELD'],
+  ['occupancy non booléen', () => viaMqtt('sensors/pir-cuisine', '{"occupancy":"oui"}'), 'rejected', 'INVALID_PAYLOAD'],
+  ['batterie hors limites', () => viaMqtt('sensors/pir-cuisine', '{"battery":150}'), 'rejected', 'INVALID_PAYLOAD'],
   ['HTTP sans sensorId', () => viaHttp({ event: 'HELP_BUTTON' }), 'rejected', 'MISSING_FIELD'],
   ['HTTP sans event', () => viaHttp({ sensorId: 'watch-001' }), 'rejected', 'MISSING_FIELD'],
   ['HTTP type inconnu', () => viaHttp({ sensorId: 'watch-001', event: 'TEMPERATURE', value: 37 }), 'rejected', 'UNKNOWN_TYPE'],
@@ -284,7 +283,7 @@ test('flow d\'ingestion : réponse HTTP 202 / 422, rien pour MQTT', () => {
   assert.equal(refused.statusCode, 422);
   assert.equal(refused.payload.reason, 'MISSING_FIELD');
 
-  const mqttMsg = normalise(adaptMqtt({ topic: 'zigbee2mqtt/pir-cuisine', payload: { occupancy: true } }))[0];
+  const mqttMsg = normalise(adaptMqtt({ topic: 'sensors/pir-cuisine', payload: { occupancy: true } }))[0];
   assert.equal(httpReply(mqttMsg), null);
 });
 

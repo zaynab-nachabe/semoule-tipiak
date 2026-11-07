@@ -77,6 +77,7 @@ Voir le fichier dédié : [Présentation de l'architecture](docs/Architecture.md
 - [Format des événements](docs/format-evenements.md) : enveloppe, types de signaux, événements de domaine, messages rejetés.
 - [Topics MQTT](docs/topics-mqtt.md) : qui publie quoi, qui s'abonne à quoi.
 - Schémas lisibles par machine (JSON Schema + types TypeScript) : [`packages/shared-types`](packages/shared-types). Vérifiés à chaque push par la CI.
+- [Contrat de l'API](docs/contrat-api.md) : endpoints REST et WebSocket exposés aux frontends.
 - Lancer l'infrastructure en local : [infra/README.md](infra/README.md).
 
 ## 5. Matrice des risques
@@ -94,5 +95,5 @@ Voir le fichier dédié : [Domain-Driven Design](docs/DDD_specifications.md)
 - [ ] **Séparation des données par rôle** : modèle de droits (rôle × relation consentie) au niveau de l'API
 - [ ] **Règles de corrélation** : seuils, durée des fenêtres, délai de pré-confirmation avant escalade
 - [ ] **RGPD** : durée de conservation des données de santé, gestion du consentement
-- [ ] **CI/CD** : la CI valide déjà `docker-compose.yml` et le format des événements ; reste les tests des services et le déploiement
+- [ ] **CI/CD** : la CI valide déjà `docker-compose.yml`, les types, le contrat d'événements et les tests de la détection ; reste les autres services et le déploiement
 - [ ] **Structure du code** : découpage en services (ingestion, détection, API, notification, frontends)

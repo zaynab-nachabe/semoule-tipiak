@@ -109,14 +109,21 @@ Objets possédant une identité unique qui évolue dans le temps (cycle de vie).
 
 Objets immuables définis uniquement par leurs propriétés. S'ils changent, on crée un nouvel objet. Nous utilisons des `Enums` stricts pour éviter les erreurs de frappe dans le code.
 
-* **`SignalType` (Enum)** : `PIR_MOTION`, `HEART_RATE`, `FALL_IMPACT`, `HELP_BUTTON`, `CANCEL_ALERT`, `SENSOR_HEARTBEAT`.
+> L'enum `SignalType` et les payloads ci-dessous doivent rester identiques à ceux du document *Format commun des événements*. Toute modification se répercute dans les deux.
+
+* **`SignalType` (Enum)** : `PIR_MOTION`, `PRESSURE_PLATE`, `HEART_RATE`, `FALL_IMPACT`, `HELP_BUTTON`, `CANCEL_ALERT`, `SENSOR_HEARTBEAT`.
 
 * **`RawSignal`** : `{ eventId: string, seniorId: string, sensorId: string, type: SignalType, timestamp: Date, payload: SignalPayload }`
-  * **`SignalPayload`** :
-    * **HeartRatePayload** : `{ heartRate: number, unit: 'BPM' }`
-    * **FallImpactPayload** : `{ impactForce: number, unit: 'G' }`
+  * **`SignalPayload`** (le contenu dépend du `type`) :
     * **PIRMotionPayload** : `{ room: string }`
-    * **SensorHeartbeatPayload** : `{ batteryLevel: number, unit: '%' }`
+    * **PressurePlatePayload** : `{ location: string, state: 'PRESSED' | 'RELEASED' }`
+    * **HeartRatePayload** : `{ value: number, unit: 'bpm' }`
+    * **FallImpactPayload** : `{ value: number, unit: 'g' }`
+    * **HelpButtonPayload** : `{}`
+    * **CancelAlertPayload** : `{ alertId: string }`
+    * **SensorHeartbeatPayload** : `{ value: number, unit: '%' }`
+
+  > Convention : toute donnée mesurée porte `{ value, unit }` ; les états et références (pièce, emplacement, identifiant) utilisent un champ nommé.
 
 * **`ToleranceThreshold`** : `{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, severity: 'HIGH' }`
 * **`TimeRange`** : `{ startTime: '22:00', endTime: '07:00' }`
@@ -124,21 +131,23 @@ Objets immuables définis uniquement par leurs propriétés. S'ils changent, on 
 
 ### 4.4. Événements de Domaine (Domain Events)
 
-Ils permettent aux différentes parties du système de réagir de manière asynchrone, ce qui est la base de notre Event-Driven Architecture.
+Ils permettent aux différentes parties du système de réagir de manière asynchrone (conception événementielle interne au contexte, voir note d'infrastructure en 3.4).
 
 * *Événements d'entrée :*
   * `RawSignalReceived` : Émis par Node-RED, déclenche l'analyse.
   * `FallSuspected` : Déclenche la demande de pré-confirmation.
   * `PreConfirmationTimeoutExpired` : Déclenché par un minuteur interne si le senior ne répond pas.
+  * `PreConfirmationCanceled` : Le senior a indiqué que tout va bien ; annule la procédure.
 * *Événements de sortie :*
   * `PreConfirmationRequested` : Demande d'afficher l'alerte sur la montre ou la tablette.
   * `CriticalAlertGenerated` : Déclenche l'envoi du SMS/Push par le module de notification.
 
 ### 4.5. Services de Domaine (Domain Services)
 
-*   **`CorrelationService`** : Reçoit les `RawSignalReceived`, interroge le `ActivityProfileRepository` pour connaître les seuils, et applique les règles métiers complexes ("si Chute + Inactivité > Seuil -> `CriticalAlertGenerated`).
-    * **`ActivityHistory` (Map)** : Une structure de données clé-valeur (Map) gardant en mémoire les derniers événements d'un Senior pour l'algorithme.
-      * *Structure :* `Map<Date, RawSignal>` (Clé : Timestamp, Valeur : Objet Signal).  * `PreConfirmationCanceled` : Le senior a indiqué que tout va bien.
+* **`CorrelationService`** : Reçoit les `RawSignalReceived`, interroge l'`ActivityProfileRepository` pour connaître les seuils, et applique les règles métiers complexes (« si Chute + Inactivité > Seuil → `CriticalAlertGenerated` »). Il s'appuie sur l'`ActivityHistory` pour raisonner sur les derniers signaux.
+
+* **`ActivityHistory` (structure de données)** : Map gardant en mémoire les derniers événements d'un `Senior` pour alimenter l'algorithme de corrélation.
+  * *Structure :* `Map<Date, RawSignal>` (clé : timestamp, valeur : signal).
 
 ### 4.6. Dépôts (Repositories)
 

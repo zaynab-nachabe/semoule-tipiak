@@ -124,10 +124,10 @@
     },
     "SensorHeartbeatPayload": {
       "type": "object",
-      "required": ["batteryLevel", "unit"],
+      "required": ["value", "unit"],
       "additionalProperties": false,
       "properties": {
-        "batteryLevel": { "type": "number", "minimum": 0, "maximum": 100 },
+        "value": { "type": "number", "minimum": 0, "maximum": 100, "description": "Niveau de batterie, en pourcentage." },
         "unit": { "type": "string", "enum": ["%"] }
       }
     }
