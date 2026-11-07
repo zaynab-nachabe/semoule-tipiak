@@ -1,30 +1,57 @@
-# CI minimale.
-# Se déclenche à chaque push et pull request sur main.
-# Vérifie que le docker-compose est valide. Volontairement léger :
-# les étapes de test par service seront ajoutées quand les services auront du code.
+# CI : se déclenche à chaque push, sur toutes les branches.
+# Les résultats s'affichent aussi sur la pull request de la branche.
+#
+#   infra : docker-compose.yml valide avec les variables de .env.example
+#   tests : sur Node 22 et 24 (versions LTS)
+#     - typecheck  : tous les workspaces TypeScript compilent en mode strict
+#     - npm test   : tests de tous les workspaces, dont
+#         * contrat d'événements (packages/shared-types) : exemples de docs/format-evenements.md,
+#           JSON Schemas, enums TypeScript et sortie du flow Node-RED vérifiés ensemble
+#         * détection (services/detection) : règles du scénario A du DDD
+#
+# Un nouveau service avec un script "test" ou "typecheck" est pris en compte automatiquement.
 
 name: CI
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ '**' ]
+  workflow_dispatch:
 
 jobs:
-  validation:
+  infra:
     runs-on: ubuntu-latest
     steps:
-      # Récupère le code du dépôt
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Vérifie que le docker-compose.yml est syntaxiquement valide
       - name: Valider docker-compose
-        run: docker compose config --quiet && echo "docker-compose valide"
+        run: |
+          cp .env.example .env
+          docker compose config --quiet && echo "docker-compose valide"
 
-      # Emplacement prêt pour les tests des services (à activer quand ils auront du code)
-      # - name: Tests detection
-      #   run: cd services/detection && npm ci && npm test
-      # - name: Tests api-gateway
-      #   run: cd apps/api-gateway && npm ci && npm test
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [ 22, 24 ]
+    name: tests (Node ${{ matrix.node-version }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Vérifier les types (tous les workspaces)
+        run: npm run typecheck
+
+      - name: Tests (contrat d'événements, détection)
+        run: npm test

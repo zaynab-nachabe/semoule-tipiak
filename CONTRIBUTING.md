@@ -30,11 +30,11 @@ docs: complète la matrice des risques
 
 ## Pull requests
 
-- On ne pousse pas directement sur `main` : on passe par une PR.
-- **Une relecture** par un autre membre avant de fusionner.
+- On ne pousse pas directement sur `main` : on passe par une PR, même en travaillant seule. La PR garde une trace de ce qui a changé et pourquoi.
+- Pas de relecture obligatoire (projet mené en solo) : relire soi-même le diff de la PR avant de fusionner.
 - La PR doit passer la CI (build + tests) au vert.
 
 
 ---
 
-C'est tout. Si une règle devient plus gênante qu'utile, on en discute et on la change.
+C'est tout. Si une règle devient plus gênante qu'utile, on la change.
