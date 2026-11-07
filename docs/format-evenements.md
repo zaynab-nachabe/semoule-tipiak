@@ -357,7 +357,7 @@ Tout message que l'ingestion ne peut pas normaliser (JSON invalide, champ manqua
 {
   "eventId": "c9d8e7f6-0001-4000-8000-000000000201",
   "timestamp": "2026-01-15T14:40:00.000Z",
-  "source": { "protocol": "MQTT", "origin": "sensors/pir-cuisine" },
+  "source": { "protocol": "MQTT", "origin": "zigbee2mqtt/pir-cuisine" },
   "reason": "UNKNOWN_TYPE",
   "details": "type 'TEMPERATURE' absent de SignalType",
   "originalMessage": "{\"type\":\"TEMPERATURE\",\"value\":21.5}"

@@ -207,13 +207,23 @@ const outcome = (result) => {
   return { kind: 'rejected', msg: ko };
 };
 
+// Messages tels que les publie Zigbee2MQTT (cache_state par défaut : état complet à chaque message).
+// Champs repris des pages d'appareils zigbee2mqtt.io.
+const AQARA_MOTION = (occupancy) =>
+  JSON.stringify({ battery: 100, device_temperature: 23, illuminance: 112, linkquality: 87, occupancy, power_outage_count: 0, voltage: 3025 });
+const TUYA_BED = (occupancy, battery = 95) =>
+  JSON.stringify({ battery, illuminance: 3, interval_time: 5, linkquality: 102, occupancy, presence_delay: 30, presence_time: 3, sensitivity: 'middle', work_state: occupancy ? 'presence' : 'none' });
+
 const cases = [
   // [libellé, résultat, type produit | motif de rejet | 'dropped']
-  ['PIR : mouvement', () => viaMqtt('sensors/pir-cuisine', '{"occupancy":true}'), 'signal', 'PIR_MOTION'],
-  ['PIR : fin de détection', () => viaMqtt('sensors/pir-cuisine', '{"occupancy":false}'), 'dropped'],
-  ['PIR : heartbeat', () => viaMqtt('sensors/pir-chambre', '{"battery":12}'), 'signal', 'SENSOR_HEARTBEAT'],
-  ['plaque : appui', () => viaMqtt('sensors/plate-lit', '{"contact":false}'), 'signal', 'PRESSURE_PLATE'],
-  ['plaque : relâchée', () => viaMqtt('sensors/plate-lit', '{"contact":true}'), 'signal', 'PRESSURE_PLATE'],
+  ['PIR : mouvement', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"occupancy":true}'), 'signal', 'PIR_MOTION'],
+  ['PIR : fin de détection', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"occupancy":false}'), 'dropped'],
+  ['PIR : heartbeat', () => viaMqtt('zigbee2mqtt/pir-chambre', '{"battery":12}'), 'signal', 'SENSOR_HEARTBEAT'],
+  ['PIR : message réel de détection (Aqara RTCGQ11LM)', () => viaMqtt('zigbee2mqtt/pir-cuisine', AQARA_MOTION(true)), 'signal', 'PIR_MOTION'],
+  ['PIR : message réel de fin de détection, batterie connue', () => viaMqtt('zigbee2mqtt/pir-cuisine', AQARA_MOTION(false)), 'signal', 'SENSOR_HEARTBEAT'],
+  ['message du pont Zigbee2MQTT', () => viaMqtt('zigbee2mqtt/bridge', '{"state":"online"}'), 'dropped'],
+  ['plaque : appui (Tuya TS0601)', () => viaMqtt('zigbee2mqtt/plate-lit', TUYA_BED(true)), 'signal', 'PRESSURE_PLATE'],
+  ['plaque : relâchée (Tuya TS0601)', () => viaMqtt('zigbee2mqtt/plate-lit', TUYA_BED(false)), 'signal', 'PRESSURE_PLATE'],
   ['montre : fréquence cardiaque', () => viaHttp({ sensorId: 'watch-001', event: 'HEART_RATE', value: 72 }), 'signal', 'HEART_RATE'],
   ['montre : fréquence cardiaque nulle', () => viaHttp({ sensorId: 'watch-001', event: 'HEART_RATE', value: 0 }), 'signal', 'HEART_RATE'],
   ['montre : chute', () => viaHttp({ sensorId: 'watch-001', event: 'FALL_IMPACT', value: 9.8 }), 'signal', 'FALL_IMPACT'],
@@ -223,14 +233,14 @@ const cases = [
   ['montre : heartbeat', () => viaHttp({ sensorId: 'watch-001', event: 'SENSOR_HEARTBEAT', battery: 84 }), 'signal', 'SENSOR_HEARTBEAT'],
   ['montre : horodatage fourni', () => viaHttp({ sensorId: 'watch-001', event: 'HELP_BUTTON', timestamp: '2026-01-15T14:32:08.000Z' }), 'signal', 'HELP_BUTTON'],
 
-  ['capteur inconnu', () => viaMqtt('sensors/pir-garage', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
-  ['montre écrivant en MQTT', () => viaMqtt('sensors/watch-001', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
+  ['capteur inconnu', () => viaMqtt('zigbee2mqtt/pir-garage', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
+  ['montre écrivant en MQTT', () => viaMqtt('zigbee2mqtt/watch-001', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
   ['PIR écrivant en HTTP', () => viaHttp({ sensorId: 'pir-cuisine', event: 'HELP_BUTTON' }), 'rejected', 'UNKNOWN_SENSOR'],
-  ['JSON invalide', () => viaMqtt('sensors/pir-cuisine', 'ceci n\'est pas du json'), 'rejected', 'INVALID_JSON'],
-  ['message qui n\'est pas un objet', () => viaMqtt('sensors/pir-cuisine', '42'), 'rejected', 'INVALID_PAYLOAD'],
-  ['PIR sans champ exploitable', () => viaMqtt('sensors/pir-cuisine', '{"linkquality":120}'), 'rejected', 'MISSING_FIELD'],
-  ['occupancy non booléen', () => viaMqtt('sensors/pir-cuisine', '{"occupancy":"oui"}'), 'rejected', 'INVALID_PAYLOAD'],
-  ['batterie hors limites', () => viaMqtt('sensors/pir-cuisine', '{"battery":150}'), 'rejected', 'INVALID_PAYLOAD'],
+  ['JSON invalide', () => viaMqtt('zigbee2mqtt/pir-cuisine', 'ceci n\'est pas du json'), 'rejected', 'INVALID_JSON'],
+  ['message qui n\'est pas un objet', () => viaMqtt('zigbee2mqtt/pir-cuisine', '42'), 'rejected', 'INVALID_PAYLOAD'],
+  ['PIR sans champ exploitable', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"linkquality":120}'), 'rejected', 'MISSING_FIELD'],
+  ['occupancy non booléen', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"occupancy":"oui"}'), 'rejected', 'INVALID_PAYLOAD'],
+  ['batterie hors limites', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"battery":150}'), 'rejected', 'INVALID_PAYLOAD'],
   ['HTTP sans sensorId', () => viaHttp({ event: 'HELP_BUTTON' }), 'rejected', 'MISSING_FIELD'],
   ['HTTP sans event', () => viaHttp({ sensorId: 'watch-001' }), 'rejected', 'MISSING_FIELD'],
   ['HTTP type inconnu', () => viaHttp({ sensorId: 'watch-001', event: 'TEMPERATURE', value: 37 }), 'rejected', 'UNKNOWN_TYPE'],
@@ -274,6 +284,33 @@ test('flow d\'ingestion : chaque motif de rejet du contrat est exercé', () => {
   assert.deepEqual(sorted(used), sorted(schemas.rejected.properties.reason.enum));
 });
 
+test('flow d\'ingestion : la bande de pression ne publie que les changements d\'état', () => {
+  // plate-fauteuil n'est utilisé par aucun autre test : son état en mémoire part de zéro.
+  const topic = 'zigbee2mqtt/plate-fauteuil';
+  const states = [];
+  const kinds = [];
+  for (const text of [TUYA_BED(true), TUYA_BED(true, 94), TUYA_BED(false), TUYA_BED(false, 93), TUYA_BED(true)]) {
+    const result = outcome(viaMqtt(topic, text));
+    kinds.push(result.kind === 'signal' ? result.msg.payload.type : result.kind);
+    if (result.kind === 'signal' && result.msg.payload.type === 'PRESSURE_PLATE') states.push(result.msg.payload.payload.state);
+  }
+  // Un rapport périodique avec le même état ne répète pas PRESSED/RELEASED : il devient un heartbeat.
+  assert.deepEqual(kinds, ['PRESSURE_PLATE', 'SENSOR_HEARTBEAT', 'PRESSURE_PLATE', 'SENSOR_HEARTBEAT', 'PRESSURE_PLATE']);
+  assert.deepEqual(states, ['PRESSED', 'RELEASED', 'PRESSED']);
+});
+
+test('flow d\'ingestion : chaque bouton du simulateur produit le résultat annoncé', () => {
+  const sims = flows.filter((n) => n.type === 'inject' && n.z === 'tab_sim' && typeof n.topic === 'string' && n.topic.startsWith('zigbee2mqtt/'));
+  assert.ok(sims.length >= 6, 'simulateur MQTT introuvable');
+  for (const sim of sims) {
+    const text = sim.payloadType === 'json' ? sim.payload : String(sim.payload);
+    const result = outcome(viaMqtt(sim.topic, text));
+    const expectsError = sim.name.startsWith('ERREUR');
+    assert.equal(result.kind === 'rejected', expectsError, `« ${sim.name} » : résultat ${result.kind}`);
+    if (result.kind === 'signal') assert.ok(validate.signal(result.msg.payload), `« ${sim.name} » : ${errorsOf('signal')}`);
+  }
+});
+
 test('flow d\'ingestion : réponse HTTP 202 / 422, rien pour MQTT', () => {
   const accepted = httpReply(normalise(adaptHttp({ payload: { sensorId: 'watch-001', event: 'HELP_BUTTON' }, res: {} }))[0]);
   assert.equal(accepted.statusCode, 202);
@@ -283,7 +320,7 @@ test('flow d\'ingestion : réponse HTTP 202 / 422, rien pour MQTT', () => {
   assert.equal(refused.statusCode, 422);
   assert.equal(refused.payload.reason, 'MISSING_FIELD');
 
-  const mqttMsg = normalise(adaptMqtt({ topic: 'sensors/pir-cuisine', payload: { occupancy: true } }))[0];
+  const mqttMsg = normalise(adaptMqtt({ topic: 'zigbee2mqtt/pir-cuisine', payload: { occupancy: true } }))[0];
   assert.equal(httpReply(mqttMsg), null);
 });
 
