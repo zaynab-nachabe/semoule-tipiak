@@ -1,12 +1,15 @@
-// CorrelationService (DDD §4.5), partie chute (scénario A).
+// CorrelationService (DDD §4.5), partie chute (scénario A), avec l'échelle de gravité à 4 niveaux.
 //
-// FALL_IMPACT ─► FallSuspected ─► PreConfirmationRequested ─┬─► CANCEL_ALERT ─────────► PreConfirmationCanceled (SENIOR_CANCELED)
-//                                                           ├─► reprise d'activité ───► PreConfirmationCanceled (ACTIVITY_RESUMED)
-//                                                           ├─► HELP_BUTTON ──────────► CriticalAlertGenerated (SENIOR_CONFIRMED)
-//                                                           └─► minuteur expiré ──────► PreConfirmationTimeoutExpired + CriticalAlertGenerated (NO_RESPONSE)
-// HELP_BUTTON sans pré-confirmation en cours ───────────────────────────────────────► CriticalAlertGenerated (HELP_REQUESTED, IMMEDIATE)
+// FALL_IMPACT (≥ seuil) ─► PreConfirmationRequested (niveau 1)
+//   ├─► CANCEL_ALERT, ou séquence de relèvement ─────► PreConfirmationCanceled
+//   ├─► HELP_BUTTON ─────────────────────────────────► CriticalAlertGenerated (CRITICAL, SENIOR_CONFIRMED)
+//   └─► délai expiré sans relèvement ─────────────────► PreConfirmationTimeoutExpired + CriticalAlertGenerated (WARNING, NO_RESPONSE)
+//         ├─► HELP_BUTTON ───────────────────────────► CriticalAlertGenerated (CRITICAL, SENIOR_CONFIRMED)
+//         ├─► délai supplémentaire sans relèvement ──► CriticalAlertGenerated (CRITICAL, NO_RECOVERY)
+//         └─► séquence de relèvement ────────────────► alerte close, pas de niveau 3
+// HELP_BUTTON hors de toute alerte en cours ─────────► CriticalAlertGenerated (CRITICAL, IMMEDIATE)
 //
-// Les enchaînements suivent docs/format-evenements.md §6.
+// Les enchaînements suivent docs/format-evenements.md §6 ; les valeurs, FallDetectionPolicy.
 
 import type {
   CancellationCause,
@@ -15,13 +18,13 @@ import type {
   DomainEventType,
   EscalationCause,
   RawSignal,
-  Severity,
 } from '@project/shared-types';
-import { Alert, AlertStatus } from '../entities/alert.js';
-import type { FallSuspected, FallImpactSignal } from '../events/fall-suspected.js';
+import { Alert, AlertStatus, type EscalatedSeverity } from '../entities/alert.js';
+import type { FallImpactSignal, FallSuspected } from '../events/fall-suspected.js';
 import type { AlertRepository } from '../repositories/alert-repository.js';
 import { assertValidPolicy, type FallDetectionPolicy } from '../value-objects/fall-detection-policy.js';
 import { createPreConfirmation, type PreConfirmation } from '../value-objects/pre-confirmation.js';
+import { FALLEN, advanceRecovery, isActivitySignal, type ActivitySignal, type RecoveryProgress } from '../value-objects/recovery-progress.js';
 import type { Clock, DomainEventPublisher, IdGenerator, ScheduledTask, Scheduler } from './ports.js';
 
 export interface CorrelationServiceDependencies {
@@ -33,17 +36,19 @@ export interface CorrelationServiceDependencies {
   policy: FallDetectionPolicy;
 }
 
-/** Levée de doute en cours, gardée en mémoire. */
-interface OpenPreConfirmation {
-  readonly preConfirmation: PreConfirmation;
-  /** Horodatage de l'impact : seule une activité postérieure prouve que la personne s'est relevée. */
+/** Suivi en mémoire d'une alerte de chute ouverte (levée de doute ou niveau 2). */
+interface FallTracking {
   readonly impactAt: Date;
   readonly triggeringEventIds: string[];
-  readonly timeout: ScheduledTask;
+  readonly preConfirmation: PreConfirmation;
+  recovery: RecoveryProgress;
+  timer: ScheduledTask;
+  /** La décision de fin de levée de doute a déjà été reportée une fois (relèvement en cours). */
+  decisionDeferred: boolean;
 }
 
 export class CorrelationService {
-  private readonly openPreConfirmations = new Map<string, OpenPreConfirmation>();
+  private readonly tracked = new Map<string, FallTracking>();
 
   constructor(private readonly deps: CorrelationServiceDependencies) {
     assertValidPolicy(deps.policy);
@@ -51,20 +56,14 @@ export class CorrelationService {
 
   /** Point d'entrée : un signal normalisé reçu sur signals/{seniorId}/{type} (DDD : RawSignalReceived). */
   onRawSignalReceived(signal: RawSignal): void {
-    switch (signal.type) {
-      case 'FALL_IMPACT':
-        this.onFallImpact(signal);
-        return;
-      case 'CANCEL_ALERT':
-        this.onCancel(signal.seniorId, signal.eventId, signal.payload.alertId);
-        return;
-      case 'HELP_BUTTON':
-        this.onHelpButton(signal.seniorId, signal.eventId);
-        return;
-      default:
-        if (this.deps.policy.activityResumedSignalTypes.includes(signal.type)) {
-          this.onActivity(signal.seniorId, signal.eventId, new Date(signal.timestamp));
-        }
+    if (signal.type === 'FALL_IMPACT') {
+      this.onFallImpact(signal);
+    } else if (signal.type === 'CANCEL_ALERT') {
+      this.onCancel(signal.seniorId, signal.eventId, signal.payload.alertId);
+    } else if (signal.type === 'HELP_BUTTON') {
+      this.onHelpButton(signal.seniorId, signal.eventId);
+    } else if (isActivitySignal(signal)) {
+      this.onActivity(signal);
     }
   }
 
@@ -74,8 +73,8 @@ export class CorrelationService {
     }
     const open = this.openFor(signal.seniorId);
     if (open.length > 0) {
-      // Nouvel impact pendant une levée de doute : même incident, pas de seconde pré-confirmation.
-      for (const { state } of open) state.triggeringEventIds.push(signal.eventId);
+      // Nouvel impact pendant un incident en cours : même incident, pas de seconde pré-confirmation.
+      for (const { tracking } of open) tracking.triggeringEventIds.push(signal.eventId);
       return;
     }
     this.onFallSuspected({ seniorId: signal.seniorId, impact: signal });
@@ -88,14 +87,13 @@ export class CorrelationService {
     this.deps.alerts.save(alert);
 
     const preConfirmation = createPreConfirmation(event.seniorId, alert.alertId, now, this.deps.policy.preConfirmationDelayMs);
-    const timeout = this.deps.scheduler.schedule(preConfirmation.expiresAt, () =>
-      this.onPreConfirmationTimeout(event.seniorId, alert.alertId),
-    );
-    this.openPreConfirmations.set(alert.alertId, {
-      preConfirmation,
+    this.tracked.set(alert.alertId, {
       impactAt: new Date(event.impact.timestamp),
       triggeringEventIds: [event.impact.eventId],
-      timeout,
+      preConfirmation,
+      recovery: FALLEN,
+      timer: this.schedule(preConfirmation.expiresAt, () => this.onPreConfirmationDeadline(event.seniorId, alert.alertId)),
+      decisionDeferred: false,
     });
 
     this.emit('PreConfirmationRequested', event.seniorId, {
@@ -107,19 +105,20 @@ export class CorrelationService {
     });
   }
 
-  /** « Non, tout va bien » : sans alertId, l'annulation porte sur toutes les levées de doute en cours. */
+  /** « Non, tout va bien » : sans alertId, porte sur toutes les levées de doute en cours. Ignoré après escalade. */
   private onCancel(seniorId: string, cancelEventId: string, alertId: string | undefined): void {
-    for (const { alert } of this.openFor(seniorId)) {
-      if (alertId === undefined || alert.alertId === alertId) {
-        this.cancelPreConfirmation(alert, 'SENIOR_CANCELED', cancelEventId);
+    for (const { alert, tracking } of this.openFor(seniorId)) {
+      if (alert.status === AlertStatus.PRE_CONFIRMING && (alertId === undefined || alert.alertId === alertId)) {
+        this.closeByRecovery(alert, tracking, 'SENIOR_CANCELED', cancelEventId);
       }
     }
   }
 
-  private onActivity(seniorId: string, activityEventId: string, activityAt: Date): void {
-    for (const { alert, state } of this.openFor(seniorId)) {
-      if (activityAt.getTime() > state.impactAt.getTime()) {
-        this.cancelPreConfirmation(alert, 'ACTIVITY_RESUMED', activityEventId);
+  private onActivity(signal: ActivitySignal): void {
+    for (const { alert, tracking } of this.openFor(signal.seniorId)) {
+      tracking.recovery = advanceRecovery(tracking.recovery, signal, tracking.impactAt, this.deps.policy.recoveryConfirmationWindowMs);
+      if (tracking.recovery.stage === 'RECOVERED') {
+        this.closeByRecovery(alert, tracking, 'ACTIVITY_RESUMED', tracking.recovery.confirmingEventId);
       }
     }
   }
@@ -127,69 +126,117 @@ export class CorrelationService {
   private onHelpButton(seniorId: string, helpEventId: string): void {
     const open = this.openFor(seniorId);
     if (open.length > 0) {
-      // Pendant une levée de doute, le bouton d'aide confirme l'incident.
-      for (const { alert, state } of open) {
-        state.timeout.cancel();
-        this.openPreConfirmations.delete(alert.alertId);
-        state.triggeringEventIds.push(helpEventId);
-        this.escalate(alert, this.deps.policy.fallAlertSeverity, 'SENIOR_CONFIRMED', state.triggeringEventIds);
+      // Pendant une levée de doute ou après une alerte de niveau 2 : la personne confirme l'incident.
+      for (const { alert, tracking } of open) {
+        this.stopTracking(alert.alertId, tracking);
+        tracking.triggeringEventIds.push(helpEventId);
+        if (alert.status === AlertStatus.ESCALATED) {
+          alert.raiseToCritical();
+          this.deps.alerts.save(alert);
+          this.publishCriticalAlert(alert, 'SENIOR_CONFIRMED', tracking.triggeringEventIds);
+        } else {
+          this.escalate(alert, 'CRITICAL', 'SENIOR_CONFIRMED', tracking.triggeringEventIds);
+        }
       }
       return;
     }
     // Demande d'aide spontanée : alerte critique immédiate, sans pré-confirmation.
-    const alert = Alert.create({
-      alertId: this.deps.ids.next(),
-      seniorId,
-      createdAt: this.deps.clock.now(),
-      reason: 'HELP_REQUESTED',
-    });
-    this.escalate(alert, this.deps.policy.helpRequestSeverity, 'IMMEDIATE', [helpEventId]);
+    const alert = Alert.create({ alertId: this.deps.ids.next(), seniorId, createdAt: this.deps.clock.now(), reason: 'HELP_REQUESTED' });
+    this.escalate(alert, 'CRITICAL', 'IMMEDIATE', [helpEventId]);
   }
 
-  private onPreConfirmationTimeout(seniorId: string, alertId: string): void {
-    const state = this.openPreConfirmations.get(alertId);
-    const alert = this.deps.alerts.findActiveAlertsBySeniorId(seniorId).find((a) => a.alertId === alertId);
-    if (!state || !alert || alert.status !== AlertStatus.PRE_CONFIRMING) {
+  private onPreConfirmationDeadline(seniorId: string, alertId: string): void {
+    const tracking = this.tracked.get(alertId);
+    const alert = this.findOpen(seniorId, alertId);
+    if (!tracking || !alert || alert.status !== AlertStatus.PRE_CONFIRMING) {
       return; // déjà annulée ou confirmée entre-temps
     }
-    this.openPreConfirmations.delete(alertId);
+    if (tracking.recovery.stage === 'ACTIVE' && !tracking.decisionDeferred) {
+      // La personne a commencé à bouger : on lui laisse le délai de confirmation avant d'alerter.
+      const deadline = new Date(tracking.recovery.activityAt.getTime() + this.deps.policy.recoveryConfirmationWindowMs);
+      if (deadline.getTime() > this.deps.clock.now().getTime()) {
+        tracking.decisionDeferred = true;
+        tracking.timer = this.schedule(deadline, () => this.onPreConfirmationDeadline(seniorId, alertId));
+        return;
+      }
+    }
+
     this.emit('PreConfirmationTimeoutExpired', seniorId, {
       alertId,
-      requestedAt: state.preConfirmation.requestedAt.toISOString(),
-      expiresAt: state.preConfirmation.expiresAt.toISOString(),
+      requestedAt: tracking.preConfirmation.requestedAt.toISOString(),
+      expiresAt: tracking.preConfirmation.expiresAt.toISOString(),
     });
-    this.escalate(alert, this.deps.policy.fallAlertSeverity, 'NO_RESPONSE', state.triggeringEventIds);
+    this.escalate(alert, 'WARNING', 'NO_RESPONSE', tracking.triggeringEventIds);
+    const criticalAt = new Date(this.deps.clock.now().getTime() + this.deps.policy.criticalEscalationDelayMs);
+    tracking.timer = this.schedule(criticalAt, () => this.onCriticalDeadline(seniorId, alertId));
   }
 
-  private cancelPreConfirmation(alert: Alert, cause: CancellationCause, triggeringEventId: string): void {
-    const state = this.openPreConfirmations.get(alert.alertId);
-    state?.timeout.cancel();
-    this.openPreConfirmations.delete(alert.alertId);
+  /** Niveau 2 resté sans relèvement : passage au niveau 3. */
+  private onCriticalDeadline(seniorId: string, alertId: string): void {
+    const tracking = this.tracked.get(alertId);
+    const alert = this.findOpen(seniorId, alertId);
+    if (!tracking || !alert || alert.severity !== 'WARNING') {
+      return;
+    }
+    this.tracked.delete(alertId);
+    alert.raiseToCritical();
+    this.deps.alerts.save(alert);
+    this.publishCriticalAlert(alert, 'NO_RECOVERY', tracking.triggeringEventIds);
+  }
+
+  /**
+   * La personne a annulé ou s'est relevée. Pendant la levée de doute, l'annulation est publiée.
+   * Après une alerte de niveau 2, l'alerte est close sans événement : le passage au niveau 3 est
+   * simplement évité (limite connue : la famille n'est pas informée du relèvement).
+   */
+  private closeByRecovery(alert: Alert, tracking: FallTracking, cause: CancellationCause, triggeringEventId: string): void {
+    const wasPreConfirming = alert.status === AlertStatus.PRE_CONFIRMING;
+    this.stopTracking(alert.alertId, tracking);
     alert.resolve(cause);
     this.deps.alerts.save(alert);
-    this.emit('PreConfirmationCanceled', alert.seniorId, { alertId: alert.alertId, cause, triggeringEventId });
+    if (wasPreConfirming) {
+      this.emit('PreConfirmationCanceled', alert.seniorId, { alertId: alert.alertId, cause, triggeringEventId });
+    }
   }
 
-  private escalate(alert: Alert, severity: Severity, escalationCause: EscalationCause, triggeringEventIds: readonly string[]): void {
-    alert.escalate();
+  private escalate(alert: Alert, severity: EscalatedSeverity, cause: EscalationCause, triggeringEventIds: readonly string[]): void {
+    alert.escalate(severity);
     this.deps.alerts.save(alert);
+    this.publishCriticalAlert(alert, cause, triggeringEventIds);
+  }
+
+  private publishCriticalAlert(alert: Alert, escalationCause: EscalationCause, triggeringEventIds: readonly string[]): void {
+    if (alert.severity === null) throw new Error(`Alert ${alert.alertId} : gravité absente`);
     this.emit('CriticalAlertGenerated', alert.seniorId, {
       alertId: alert.alertId,
       reason: alert.reason,
-      severity,
+      severity: alert.severity,
       escalationCause,
       triggeringEventIds: [...triggeringEventIds],
     });
   }
 
-  /** Alertes du senior en cours de levée de doute, avec leur état en mémoire. */
-  private openFor(seniorId: string): { alert: Alert; state: OpenPreConfirmation }[] {
-    const result: { alert: Alert; state: OpenPreConfirmation }[] = [];
+  private stopTracking(alertId: string, tracking: FallTracking): void {
+    tracking.timer.cancel();
+    this.tracked.delete(alertId);
+  }
+
+  /** Alertes de chute du senior encore suivies (levée de doute ou niveau 2). */
+  private openFor(seniorId: string): { alert: Alert; tracking: FallTracking }[] {
+    const result: { alert: Alert; tracking: FallTracking }[] = [];
     for (const alert of this.deps.alerts.findActiveAlertsBySeniorId(seniorId)) {
-      const state = this.openPreConfirmations.get(alert.alertId);
-      if (alert.status === AlertStatus.PRE_CONFIRMING && state) result.push({ alert, state });
+      const tracking = this.tracked.get(alert.alertId);
+      if (tracking) result.push({ alert, tracking });
     }
     return result;
+  }
+
+  private findOpen(seniorId: string, alertId: string): Alert | undefined {
+    return this.deps.alerts.findActiveAlertsBySeniorId(seniorId).find((a) => a.alertId === alertId);
+  }
+
+  private schedule(at: Date, task: () => void): ScheduledTask {
+    return this.deps.scheduler.schedule(at, task);
   }
 
   private emit<T extends DomainEventType>(type: T, seniorId: string, payload: DomainEventPayloadByType[T]): void {

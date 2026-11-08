@@ -43,7 +43,7 @@ Les trois personas ont des besoins réellement différents, ce qui justifie **tr
 
 | Sortie | Destinataire | Canal |
 |---|---|---|
-| Alerte critique (chute, inactivité anormale, demande d'aide) | Famille + équipe médicale | Notification push / SMS |
+| Alerte critique (chute, inactivité anormale, demande d'aide), selon sa gravité | Famille + équipe médicale | Alerte dans l'application (vues famille et médicale), journalisée |
 | Pré-confirmation (« Une chute a été détectée, tout va bien ? ») | Personne âgée | Montre / appli (avec annulation) |
 | Tableau de bord temps réel + historique / tendances | Équipe médicale | Dashboard web |
 | Résumé personnel (activité du jour, fréquence cardiaque, alertes) | Personne âgée | Appli / tablette |

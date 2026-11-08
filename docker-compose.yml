@@ -1,14 +1,13 @@
-# Socle d'infrastructure (version minimaliste).
-# Lance uniquement l'infrastructure réelle : broker MQTT, base de données, passerelle Node-RED.
-# Les services métier (api-gateway, detection, notification) seront ajoutés ici au fur et à mesure.
+# Infrastructure et services du projet.
+# Les services métier (api-gateway, notification, application web) seront ajoutés au fur et à mesure.
 #
-# Lancement :  docker compose up
+# Lancement :  docker compose up --build
 # Arrêt      :  docker compose down
 # Les identifiants viennent du fichier .env (copier .env.example en .env au premier lancement).
 
 services:
 
-  # --- Broker MQTT : point d'entrée des capteurs ---
+  # --- Broker MQTT : capteurs (via Zigbee2MQTT) et messagerie interne ---
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: mosquitto
@@ -16,6 +15,13 @@ services:
       - "1883:1883"          # port MQTT standard
     volumes:
       - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data   # sessions persistantes et messages QoS 1 en attente
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/broker/version' -C 1 -W 3 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
     networks:
       - app-network
 
@@ -31,19 +37,48 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data   # persistance des données entre les redémarrages
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
     networks:
       - app-network
 
   # --- Passerelle d'ingestion ---
   node-red:
-    image: nodered/node-red:latest
+    image: nodered/node-red:4.1.12   # version fixée : un build donne toujours le même résultat
     container_name: node-red
     ports:
       - "1880:1880"          # interface web de Node-RED
     volumes:
       - ./services/ingestion:/data   # monte la config (settings.js) et les flows
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # --- Détection (corrélation des signaux, levée de doute, alertes) ---
+  detection:
+    build:
+      context: .
+      dockerfile: services/detection/Dockerfile
+    container_name: detection
+    environment:
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_CLIENT_ID: detection
+      # Valeurs de détection (ADR 0003 à 0005). Raccourcir les délais dans .env pour une démonstration.
+      FALL_MIN_IMPACT_G: ${FALL_MIN_IMPACT_G:-3.0}
+      PRE_CONFIRMATION_DELAY_S: ${PRE_CONFIRMATION_DELAY_S:-60}
+      RECOVERY_WINDOW_S: ${RECOVERY_WINDOW_S:-90}
+      CRITICAL_ESCALATION_DELAY_S: ${CRITICAL_ESCALATION_DELAY_S:-300}
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - app-network
 
@@ -52,6 +87,6 @@ networks:
   app-network:
     driver: bridge
 
-# --- Volume persistant pour PostgreSQL ---
 volumes:
-  pgdata:
+  pgdata:           # données PostgreSQL
+  mosquitto-data:   # persistance du broker MQTT

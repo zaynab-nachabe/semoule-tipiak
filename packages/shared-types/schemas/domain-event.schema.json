@@ -54,8 +54,8 @@
     },
     "AlertId": { "type": "string", "minLength": 1 },
     "AlertReason": { "type": "string", "enum": ["FALL_DETECTED", "PROLONGED_INACTIVITY", "HELP_REQUESTED"] },
-    "Severity": { "type": "string", "enum": ["MEDIUM", "HIGH", "CRITICAL"] },
-    "EscalationCause": { "type": "string", "enum": ["NO_RESPONSE", "SENIOR_CONFIRMED", "IMMEDIATE"] },
+    "Severity": { "type": "string", "enum": ["SYSTEM", "PRE_ALERT", "WARNING", "CRITICAL"] },
+    "EscalationCause": { "type": "string", "enum": ["NO_RESPONSE", "SENIOR_CONFIRMED", "IMMEDIATE", "NO_RECOVERY"] },
     "CancellationCause": { "type": "string", "enum": ["SENIOR_CANCELED", "ACTIVITY_RESUMED"] },
     "TriggeringEventIds": {
       "type": "array",

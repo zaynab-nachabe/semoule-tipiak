@@ -30,6 +30,34 @@ jobs:
           cp .env.example .env
           docker compose config --quiet && echo "docker-compose valide"
 
+      # Construit les images des services (vérifie les Dockerfile)
+      - name: Construire les images
+        run: docker compose build
+
+      # Démarre le broker et la détection, envoie une chute et vérifie que l'alerte de niveau 1 est publiée
+      - name: Test de bout en bout (broker + détection)
+        run: |
+          docker compose up -d mosquitto detection
+          for i in $(seq 1 30); do
+            docker compose logs detection | grep -q "connecté et abonné" && break
+            sleep 1
+          done
+          docker compose exec -T mosquitto sh -c '
+            mosquitto_sub -h localhost -t "alerts/#" -C 1 -W 15 > /tmp/alert.json &
+            sleep 1
+            mosquitto_pub -h localhost -q 1 -t signals/senior-001/FALL_IMPACT -m "{\"eventId\":\"a1b2c3d4-0000-4000-8000-000000000001\",\"seniorId\":\"senior-001\",\"sensorId\":\"watch-001\",\"type\":\"FALL_IMPACT\",\"timestamp\":\"2026-01-15T14:32:08.000Z\",\"payload\":{\"value\":9.8,\"unit\":\"g\"}}"
+            wait
+            cat /tmp/alert.json
+            grep -q PreConfirmationRequested /tmp/alert.json'
+
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: docker compose logs
+
+      - name: Arrêter
+        if: always()
+        run: docker compose down -v
+
   tests:
     runs-on: ubuntu-latest
     strategy:

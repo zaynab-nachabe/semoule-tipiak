@@ -103,8 +103,10 @@ Une plaque de pression émet un événement à chaque **changement d'état**, pa
 ```
 | Champ | Type | Description |
 |---|---|---|
-| `value` | number | Intensité de l'impact détecté. |
-| `unit` | string | Unité de mesure (ici `g` pour grammes). Permet de filtrer les chocs mineurs. |
+| `value` | number | Pic de magnitude du vecteur d'accélération (SVtot) mesuré par la montre lors de l'impact. Permet de filtrer les chocs mineurs. |
+| `unit` | string | Unité de mesure : toujours `g` (accélération de la pesanteur, ≈ 9,81 m/s²), et non des grammes. |
+
+La détection de chute elle-même (pic d'impact, changement d'orientation, immobilité qui suit) est faite **par la montre**, comme sur les montres du commerce : elle n'envoie pas son flux brut d'accéléromètre, seulement l'événement `FALL_IMPACT` une fois la chute reconnue.
 
 ### `HELP_BUTTON`
 ```json
@@ -257,19 +259,33 @@ Même principe que les signaux, sans `sensorId` (l'émetteur est toujours le ser
 | `PROLONGED_INACTIVITY` | Inactivité dépassant le seuil toléré par rapport au profil habituel. |
 | `HELP_REQUESTED` | Demande d'aide manuelle (`HELP_BUTTON`). Passe directement en alerte critique, sans pré-confirmation. |
 
-> `HELP_REQUESTED` n'existe pas encore dans l'enum `reason` de l'entité `Alert` du document DDD : à y ajouter.
 
-**`Severity`** — gravité de l'alerte : `MEDIUM`, `HIGH`, `CRITICAL`.
+**`Severity`** — échelle de gravité à 4 niveaux :
+
+| Niveau | Valeur | Signification | Où on la trouve | Effet dans l'application |
+|---|---|---|---|---|
+| 0 | `SYSTEM` | Événement technique (batterie faible, capteur muet) | Événements de supervision des capteurs (à venir) | Indicateur dans la vue médicale, journal |
+| 1 | `PRE_ALERT` | Levée de doute en cours | Implicite pour `PreConfirmationRequested` | Vibration de la montre, bandeau « Tout va bien ? » avec compte à rebours dans la vue senior |
+| 2 | `WARNING` | Incident non infirmé : la personne n'a pas répondu | `CriticalAlertGenerated` (`NO_RESPONSE`) | Alerte dans la vue famille, trace pour l'équipe médicale |
+| 3 | `CRITICAL` | Urgence confirmée | `CriticalAlertGenerated` (`SENIOR_CONFIRMED`, `IMMEDIATE`, `NO_RECOVERY`) | Alerte urgente dans les vues médicale et famille. Dans un déploiement réel, ce niveau déclencherait un appel ou l'envoi de secours (hors périmètre du projet). |
 
 **`EscalationCause`** — pourquoi l'alerte est devenue critique :
 
-| Valeur | Signification |
-|---|---|
-| `NO_RESPONSE` | La pré-confirmation a expiré sans réponse. |
-| `SENIOR_CONFIRMED` | La personne a confirmé avoir besoin d'aide (`HELP_BUTTON` pendant une pré-confirmation). |
-| `IMMEDIATE` | Escalade directe, sans pré-confirmation (ex. demande d'aide spontanée). |
+| Valeur | Niveau | Signification |
+|---|---|---|
+| `NO_RESPONSE` | 2 | La pré-confirmation a expiré sans réponse ni signe de relèvement. |
+| `SENIOR_CONFIRMED` | 3 | La personne a confirmé avoir besoin d'aide (`HELP_BUTTON` pendant la pré-confirmation ou après une alerte de niveau 2). |
+| `IMMEDIATE` | 3 | Escalade directe, sans pré-confirmation (demande d'aide spontanée). |
+| `NO_RECOVERY` | 3 | Après une alerte de niveau 2, toujours aucun signe de relèvement au bout d'un délai supplémentaire. |
 
-**`CancellationCause`** — pourquoi la pré-confirmation a été annulée : `SENIOR_CANCELED` (bouton « tout va bien », signal `CANCEL_ALERT`) ou `ACTIVITY_RESUMED` (un mouvement a été détecté après l'impact).
+Une même alerte peut donc être publiée **deux fois** en `CriticalAlertGenerated` : d'abord en `WARNING`, puis en `CRITICAL` (même `alertId`, `eventId` différent). Les abonnés gardent la dernière gravité reçue pour un `alertId`.
+
+**`CancellationCause`** — pourquoi la pré-confirmation a été annulée : `SENIOR_CANCELED` (bouton « tout va bien », signal `CANCEL_ALERT`) ou `ACTIVITY_RESUMED` (la personne s'est relevée : voir la séquence de relèvement ci-dessous).
+
+**Séquence de relèvement.** Un seul signal de mouvement ne suffit pas à annuler (une personne au sol peut bouger et déclencher un détecteur). Il faut une **séquence** de deux signaux des capteurs du logement, postérieurs à l'impact :
+
+1. **activité** : un `PIR_MOTION` ou un `PRESSURE_PLATE` ;
+2. **stabilité**, arrivée après l'activité et dans un délai limité : un `PRESSURE_PLATE` à l'état `PRESSED` (la personne est sur le lit ou le fauteuil, pas au sol) ou un `PIR_MOTION` dans une **autre pièce** que celle de l'activité (elle s'est déplacée).
 
 ### `PreConfirmationRequested`
 ```json
@@ -322,7 +338,7 @@ Même principe que les signaux, sans `sensorId` (l'émetteur est toujours le ser
 {
   "alertId": "alert-123",
   "reason": "FALL_DETECTED",
-  "severity": "CRITICAL",
+  "severity": "WARNING",
   "escalationCause": "NO_RESPONSE",
   "triggeringEventIds": ["a1b2c3d4-0003-4000-8000-000000000003"]
 }
@@ -340,12 +356,20 @@ Même principe que les signaux, sans `sensorId` (l'émetteur est toujours le ser
 ### Enchaînements possibles
 
 ```
-FALL_IMPACT ─► PreConfirmationRequested ─┬─► PreConfirmationCanceled                              (fin, pas d'alerte)
-                                         ├─► PreConfirmationTimeoutExpired ─► CriticalAlertGenerated (NO_RESPONSE)
-                                         └─► HELP_BUTTON ──────────────────► CriticalAlertGenerated (SENIOR_CONFIRMED)
+FALL_IMPACT ─► PreConfirmationRequested ─┬─► CANCEL_ALERT ou séquence de relèvement ─► PreConfirmationCanceled            (fin, pas d'alerte)
+  (niveau 1)                             ├─► HELP_BUTTON ─────────────────────────────► CriticalAlertGenerated (CRITICAL, SENIOR_CONFIRMED)
+                                         └─► délai expiré, pas de relèvement ─────────► PreConfirmationTimeoutExpired
+                                                                                        + CriticalAlertGenerated (WARNING, NO_RESPONSE)
+                                                                                              │
+                         ┌────────────────────────────────────────────────────────────────────┤
+                         ├─► HELP_BUTTON ─────────────────────────► CriticalAlertGenerated (CRITICAL, SENIOR_CONFIRMED)
+                         ├─► délai supplémentaire sans relèvement ─► CriticalAlertGenerated (CRITICAL, NO_RECOVERY)
+                         └─► séquence de relèvement ──────────────► pas de passage au niveau 3
 
-HELP_BUTTON (hors pré-confirmation) ───────────────────────► CriticalAlertGenerated (IMMEDIATE)
+HELP_BUTTON (hors de toute alerte en cours) ─────────────────────► CriticalAlertGenerated (CRITICAL, IMMEDIATE)
 ```
+
+Si la personne a montré une **activité** sans encore la **stabilité** au moment où le délai de pré-confirmation expire, la décision est reportée jusqu'à la fin du délai de confirmation de la séquence de relèvement : elle peut encore se relever avant l'alerte.
 
 ---
 

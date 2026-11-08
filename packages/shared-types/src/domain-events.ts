@@ -17,13 +17,24 @@ export const AlertReason = {
 } as const;
 export type AlertReason = (typeof AlertReason)[keyof typeof AlertReason];
 
-export const Severity = { MEDIUM: 'MEDIUM', HIGH: 'HIGH', CRITICAL: 'CRITICAL' } as const;
+/**
+ * Échelle de gravité à 4 niveaux (docs/format-evenements.md §6) :
+ * 0 SYSTEM (batterie faible, événement technique), 1 PRE_ALERT (levée de doute en cours),
+ * 2 WARNING (incident non infirmé), 3 CRITICAL (urgence confirmée).
+ */
+export const Severity = {
+  SYSTEM: 'SYSTEM',
+  PRE_ALERT: 'PRE_ALERT',
+  WARNING: 'WARNING',
+  CRITICAL: 'CRITICAL',
+} as const;
 export type Severity = (typeof Severity)[keyof typeof Severity];
 
 export const EscalationCause = {
   NO_RESPONSE: 'NO_RESPONSE',
   SENIOR_CONFIRMED: 'SENIOR_CONFIRMED',
   IMMEDIATE: 'IMMEDIATE',
+  NO_RECOVERY: 'NO_RECOVERY',
 } as const;
 export type EscalationCause = (typeof EscalationCause)[keyof typeof EscalationCause];
 

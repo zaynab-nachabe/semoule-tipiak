@@ -1,0 +1,13 @@
+# Fichiers exclus du contexte de build Docker (le contexte est la racine du dépôt).
+.git
+**/node_modules
+**/dist
+.env
+claude.md
+CLAUDE.md
+
+# Données de runtime de Node-RED
+services/ingestion/.config.*
+services/ingestion/.flows*.json.backup
+services/ingestion/lib
+services/ingestion/context
