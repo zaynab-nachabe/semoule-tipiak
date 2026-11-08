@@ -7,10 +7,10 @@ Tous les échanges asynchrones passent par le broker **Mosquitto** (`mosquitto:1
 ## 1. Vue d'ensemble
 
 ```
-[capteurs simulés] ─► sensors/{sensorId} ─┐
-                                             ├─► [Node-RED] ─┬─► signals/{seniorId}/{type} ─► [détection] ─► alerts/{seniorId}/{eventType} ─► [notification]
-[montre] ─► HTTP POST /ingest/watch ─────────┘               │                                                                         └─► [api-gateway] ─► WebSocket
-                                                             └─► ingestion/rejected
+[capteurs Zigbee] ─► Zigbee2MQTT ─► zigbee2mqtt/{sensorId} ─┐
+                                                            ├─► [Node-RED] ─┬─► signals/{seniorId}/{type} ─► [détection] ─► alerts/{seniorId}/{eventType} ─┬─► [notification]
+[montre] ─► appli compagnon ─► HTTP POST /ingest/watch ─────┘               │                                                                        └─► [api-gateway] ─► WebSocket
+                                                                            └─► ingestion/rejected
 ```
 
 ---
@@ -19,19 +19,25 @@ Tous les échanges asynchrones passent par le broker **Mosquitto** (`mosquitto:1
 
 | Topic | Contenu | Format | Publié par | Abonnés |
 |---|---|---|---|---|
-| `sensors/{sensorId}` | Message brut d'un capteur fixe (PIR, plaque de pression) | Propre au capteur (non normalisé) | Le simulateur Node-RED | Node-RED |
+| `zigbee2mqtt/{sensorId}` | Message brut d'un capteur fixe (PIR, bande de pression) | Format Zigbee2MQTT du modèle de capteur (non normalisé) | Zigbee2MQTT ; en démonstration, le simulateur Node-RED | Node-RED |
 | `signals/{seniorId}/{type}` | Signal normalisé (`RawSignal`) | §1 à §3 de `format-evenements.md` | Node-RED | Détection, historisation |
 | `ingestion/rejected` | Message que Node-RED n'a pas pu normaliser | §7 de `format-evenements.md` | Node-RED | Supervision / débogage |
 | `alerts/{seniorId}/{eventType}` | Événement de domaine (pré-confirmation, alerte critique) | §6 de `format-evenements.md` | Détection | Notification, api-gateway |
 
 Exemples :
-- `sensors/pir-cuisine`
+- `zigbee2mqtt/pir-cuisine`
 - `signals/senior-001/FALL_IMPACT`
 - `alerts/senior-001/CriticalAlertGenerated`
 
-### Pourquoi `sensors/{sensorId}` en entrée ?
+### Pourquoi `zigbee2mqtt/{sensorId}` en entrée ?
 
-C'est une convention de nommage simple et explicite pour nos capteurs. Les capteurs simulés publient directement sur ce topic, imitant le comportement d'un réseau de capteurs MQTT classique.
+Les capteurs fixes retenus sont des capteurs **Zigbee** du commerce (modèles et formats dans [services/ingestion/README.md](../services/ingestion/README.md#capteurs-réels)). Un capteur Zigbee ne parle pas MQTT : il est appairé à une passerelle **Zigbee2MQTT**, qui publie l'état de chaque appareil sur `zigbee2mqtt/{friendly_name}`. Nous donnons à chaque capteur son `sensorId` comme `friendly_name`.
+
+Garder cette convention a deux avantages :
+- **réalisme** : le simulateur publie exactement ce que publierait une vraie passerelle Zigbee2MQTT (même topic, même contenu) ;
+- **remplaçabilité** : brancher de vrais capteurs ne demande aucun changement dans Node-RED ni dans le reste du système.
+
+Zigbee2MQTT publie aussi ses propres messages sous `zigbee2mqtt/bridge/...` et, si l'option *availability* est activée, l'état de connexion de chaque capteur sous `zigbee2mqtt/{sensorId}/availability`. Ces topics ont un niveau de plus et ne sont donc pas reçus par l'abonnement `zigbee2mqtt/+`.
 
 ### Entrée HTTP (montre)
 
@@ -45,7 +51,7 @@ Les jokers MQTT permettent à chaque service de ne recevoir que ce qui le concer
 
 | Service | Abonnement | Reçoit |
 |---|---|---|
-| Node-RED | `sensors/+` | Tous les capteurs fixes |
+| Node-RED | `zigbee2mqtt/+` | Tous les capteurs fixes |
 | Détection | `signals/+/+` | Tous les signaux de tous les seniors |
 | Notification | `alerts/+/CriticalAlertGenerated` et `alerts/+/PreConfirmationRequested` | Les alertes à envoyer et les demandes de levée de doute à pousser sur la montre |
 | api-gateway | `alerts/#` | Tous les événements de domaine, relayés en WebSocket aux frontends |

@@ -9,7 +9,7 @@ import type { SignalType } from './signals.js';
 
 export const Topics = {
   /** Message brut d'un capteur fixe, avant normalisation. */
-  sensorRaw: (sensorId: TopicSafeId): string => `sensors/${sensorId}`,
+  sensorRaw: (sensorId: TopicSafeId): string => `zigbee2mqtt/${sensorId}`,
   /** Signal normalisé. */
   signal: (seniorId: TopicSafeId, type: SignalType): string => `signals/${seniorId}/${type}`,
   /** Événement de domaine émis par la détection. */
@@ -20,7 +20,7 @@ export const Topics = {
 
 /** Abonnements par service, avec jokers MQTT. */
 export const Subscriptions = {
-  ingestion: 'sensors/+',
+  ingestion: 'zigbee2mqtt/+',
   detection: 'signals/+/+',
   notification: [
     'alerts/+/CriticalAlertGenerated',

@@ -29,13 +29,15 @@ Les trois personas ont des besoins réellement différents, ce qui justifie **tr
 
 | Donnée | Source | Nature |
 |---|---|---|
-| Mouvement / présence par pièce | Détecteurs PIR (détecteurs de mouvement), plaques de pression (lit, fauteuil, seuil de pièce) | Événementiel |
+| Mouvement / présence par pièce | Détecteurs de mouvement (Aqara RTCGQ11LM), bandes de pression (Tuya TS0601, lit et fauteuil), via Zigbee2MQTT | Événementiel |
 | Fréquence cardiaque | Montre / bracelet connecté | Mesure périodique (~1/min) |
 | Détection de chute (impact) | Accéléromètre de la montre | Événement ponctuel |
 | Demande d'aide / annulation d'alerte | Bouton de la montre ou appli | Événement ponctuel |
 | Profil, seuils, contacts d'urgence | Saisie par l'équipe médicale / la famille | Configuration (statique, modifiable) |
 
 > La position dans le logement n'est pas mesurée directement : elle est **reconstruite** à partir des événements de présence (quelle pièce, quand).
+
+> **Capteurs réels.** Les capteurs sont simulés, mais chacun reproduit un appareil du commerce et ses messages réels (format Zigbee2MQTT pour les capteurs fixes). Modèles, formats et comportements pris en compte : [services/ingestion/README.md](services/ingestion/README.md#capteurs-réels).
 
 ### Sorties (vers les utilisateurs)
 

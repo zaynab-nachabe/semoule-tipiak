@@ -20,10 +20,10 @@ Ainsi le monorepo est dans ce cas assumé et documenté, workspaces non pour l'i
    └───────┬───────┘
            │  format commun
            ▼
-   ┌───────────────┐        ┌───────────────┐
-   │   Détection   │───────>│  Notification │  Choisit le destinataire
-   │ (corrélation) │ alerte │ (push / SMS)  │  selon la gravité.
-   └───────┬───────┘        └───────────────┘
+   ┌───────────────┐        ┌────────────────┐
+   │   Détection   │───────>│  Notification  │  Choisit le destinataire
+   │ (corrélation) │ alerte │ (in-app + log) │  selon la gravité.
+   └───────┬───────┘        └────────────────┘
            │  événements + résultats
            ▼
    ┌───────────────┐
@@ -33,8 +33,9 @@ Ainsi le monorepo est dans ce cas assumé et documenté, workspaces non pour l'i
            │  REST (consultation) · WebSocket (temps réel)
            ▼
    ┌───────────────────────────────────────┐
-   │   3 FRONTENDS selon le rôle           │
+   │   1 APPLICATION WEB, 3 VUES           │
    │   Personne âgée · Famille · Médical   │
+   │   (vue choisie selon le rôle connecté)│
    └───────────────────────────────────────┘
 
    Le tout est conteneurisé et lancé avec Docker Compose.
@@ -52,11 +53,11 @@ Ainsi le monorepo est dans ce cas assumé et documenté, workspaces non pour l'i
 
 **Module de détection (corrélation)** — Le cerveau du système. Il croise les signaux dans le temps pour éviter les fausses alertes (ex. chute suivie d'une reprise de mouvement = pas d'alerte ; chute suivie d'un silence = alerte) et compare l'activité courante au profil habituel. Séparé de l'API pour isoler clairement cette responsabilité.
 
-**API (NestJS)** — Point d'entrée unique des trois frontends. Elle gère l'**authentification**, les **droits par rôle** (une famille ne voit que son proche et pas les données médicales détaillées) et l'**agrégation** des données avant de les servir.
+**API (NestJS)** — Point d'entrée unique de l'application web et de ses trois vues. Elle gère l'**authentification**, les **droits par rôle** (une famille ne voit que son proche et pas les données médicales détaillées) et l'**agrégation** des données avant de les servir.
 
 **PostgreSQL** — Base de données unique. Elle stocke les profils, les relations personne/famille/médecin avec leur consentement, les seuils, les mesures et le journal des alertes. Un seul système de stockage à maîtriser, suffisant pour le volume du projet.
 
-**Notification** — Service qui choisit le ou les destinataires d'une alerte selon sa gravité et envoie la notification (push / SMS via un fournisseur externe).
+**Notification** — Service qui choisit le ou les destinataires d'une alerte selon sa gravité et la leur transmet **dans l'application** (vues famille et médicale, en temps réel), tout en gardant une **trace dans un journal**. Pas d'envoi SMS ni push : le sujet n'impose pas de canal externe, et un fournisseur (SMS, push) pourrait être branché plus tard derrière ce même service sans changer le reste.
 
 **REST + WebSocket** — Deux modes d'échange entre frontends et API. **REST** pour la consultation et la configuration (le client demande, le serveur répond). **WebSocket** pour le temps réel (le serveur pousse une alerte de chute immédiatement, sans que le client interroge en boucle).
 
@@ -67,6 +68,8 @@ Ainsi le monorepo est dans ce cas assumé et documenté, workspaces non pour l'i
 ## Choix assumés
 
 **Une seule base de données.** Le volume ne justifie pas d'ajouter une base de séries temporelles dédiée (type InfluxDB) à côté du relationnel. PostgreSQL couvre l'ensemble des besoins : profils, relations et consentements, seuils, mesures et journal des alertes. Une base spécialisée serait l'évolution naturelle si le volume de mesures augmentait fortement.
+
+**Une seule application web, trois vues.** Le besoin est de trois *vues*, une par persona, pas de trois applications. Une seule application avec une vue par rôle (choisie après connexion) partage le code commun (connexion, appels à l'API, réception des alertes en temps réel) et ne demande qu'un conteneur. Chaque vue reste adaptée à son persona : interface simplifiée et lisible pour la personne âgée, statut synthétique pour la famille, tableau de bord détaillé pour l'équipe médicale. Limite : les trois vues sont livrées ensemble ; des applications séparées n'auraient de sens que si elles devaient évoluer ou être déployées indépendamment.
 
 **Frontend dédié plutôt que Node-RED Dashboard.** Les trois vues ont des droits et des besoins d'affichage différents, et la personne âgée requiert une interface spécifiquement adaptée (lisibilité, actions simples). Un frontend dédié derrière l'API laisse maîtriser l'authentification par rôle et l'ergonomie de chaque vue, ce que l'outil de dashboard intégré ne permettrait pas. Ce choix est assumé : la limite éventuelle de l'interface ne pourrait pas être imputée à l'outil, puisque c'est nous qui le construisons.
 
