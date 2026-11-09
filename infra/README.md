@@ -55,7 +55,7 @@ Pour lancer en arrière-plan (sans bloquer le terminal) : `docker compose up --b
 
 ## Dépannage
 
-**Les données** (PostgreSQL dans `pgdata`, sessions MQTT dans `mosquitto-data`) sont conservées entre les redémarrages. Pour repartir de zéro :
+**Les données** (PostgreSQL dans `pgdata`, sessions MQTT dans `mosquitto-data`, état de Node-RED dans `node-red-data`) sont conservées entre les redémarrages. Les flows, eux, restent dans le dépôt (`services/ingestion/flows.json`). Pour repartir de zéro :
 ```bash
 docker compose down -v    # le -v supprime aussi les volumes
 ```

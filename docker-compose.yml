@@ -52,8 +52,14 @@ services:
     container_name: node-red
     ports:
       - "1880:1880"          # interface web de Node-RED
+    environment:
+      FLOWS: /flows/flows.json   # variable de l'image Node-RED : flows lus et enregistrés dans le dépôt
     volumes:
-      - ./services/ingestion:/data   # monte la config (settings.js) et les flows
+      # État d'exécution (modules, clé de chiffrement, contexte) dans un volume Docker : le conteneur
+      # (utilisateur 1000) peut y écrire quel que soit le propriétaire du dossier du dépôt sur la machine.
+      - node-red-data:/data
+      - ./services/ingestion/settings.js:/data/settings.js:ro   # configuration, en lecture seule
+      - ./services/ingestion:/flows                              # flows du dépôt (modifiables depuis l'éditeur)
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -119,3 +125,4 @@ networks:
 volumes:
   pgdata:           # données PostgreSQL
   mosquitto-data:   # persistance du broker MQTT
+  node-red-data:    # état d'exécution de Node-RED (modules, clé, contexte)
