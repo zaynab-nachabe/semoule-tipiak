@@ -15,4 +15,6 @@ export interface AlertRecord {
   acknowledgedAt: Date | null;
   acknowledgedById: string | null;
   resolvedAt: Date | null;
+  closedAt: Date | null;
+  closedById: string | null;
 }

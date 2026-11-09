@@ -47,7 +47,8 @@ L'alerte telle que vue par un frontend. Les champs servis dépendent du rôle (�
   "cancellationCause": null,              // CancellationCause | null — renseigné si résolue par annulation/reprise
   "createdAt": "2026-01-15T14:32:08.000Z",
   "acknowledgedAt": null,                 // IsoUtcTimestamp | null — renseigné quand le médical prend en charge
-  "resolvedAt": null                      // IsoUtcTimestamp | null
+  "resolvedAt": null,                     // IsoUtcTimestamp | null
+  "closedAt": null                        // IsoUtcTimestamp | null — clôture par le médical après intervention
 }
 ```
 
@@ -124,6 +125,7 @@ Un point de série temporelle, pour les graphiques. `unit` reprend celle du payl
 | `POST` | `/seniors/{seniorId}/alerts/{alertId}/cancel` | senior | Annule une alerte en pré-confirmation (« tout va bien »). | à venir (application web) |
 | `POST` | `/seniors/{seniorId}/help` | senior | Déclenche une demande d'aide manuelle. | à venir (application web) |
 | `POST` | `/seniors/{seniorId}/alerts/{alertId}/acknowledge` | médical | Prise en charge → renseigne `acknowledgedAt` (idempotent ; alerte résolue → `409`). | ✅ |
+| `POST` | `/seniors/{seniorId}/alerts/{alertId}/close` | médical | Clôture après intervention → `RESOLVED`, renseigne `closedAt` (et `acknowledgedAt` s'il manquait). Seule une alerte escaladée se clôture : levée de doute en cours ou alerte déjà résolue → `409`. | ✅ |
 
 ### Configuration (médical uniquement)
 | Méthode | Chemin | Description | Statut |
@@ -132,7 +134,7 @@ Un point de série temporelle, pour les graphiques. `unit` reprend celle du payl
 | `GET` / `PUT` | `/seniors/{seniorId}/routines` | Lire / modifier les plages de routine (`TimeRange`). | à venir (scénario B) |
 | `GET` / `POST` / `DELETE` | `/seniors/{seniorId}/contacts` | Gérer les contacts d'urgence (`EmergencyContact` — forme à définir). | à venir |
 
-> Les actions côté senior (`cancel`, `help`) ne créent pas de signaux `CANCEL_ALERT` / `HELP_BUTTON` : ceux-là viennent des capteurs via l'ingestion. L'API traduit ces appels frontend en commandes vers la détection. Les deux chemins (capteur et appli) aboutissent au même effet métier.
+> Les actions côté senior (`cancel`, `help`) passent par l'ingestion, comme le bouton de la montre ([ADR 0007](adr/0007-actions-application-via-ingestion.md)) : l'API vérifie les droits, puis transmet l'action à Node-RED, qui la normalise en signal `CANCEL_ALERT` ou `HELP_BUTTON`. La détection ne fait pas de différence entre la montre et l'application.
 
 ---
 

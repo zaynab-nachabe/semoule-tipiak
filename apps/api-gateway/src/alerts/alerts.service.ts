@@ -2,6 +2,7 @@ import { ConflictException, Injectable, Logger, NotFoundException } from '@nestj
 import type { Alert as AlertRow } from '@prisma/client';
 import type { DomainEvent } from '@project/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
+import { acknowledgeAlert, closeAlert, type ClosingResult } from './alert-closing';
 import { applyDomainEvent, type JournalChange } from './alert-journal';
 import type { AlertRecord } from './alert-record';
 
@@ -64,15 +65,48 @@ export class AlertsService {
   }
 
   /** Prise en charge par le médical : renseigne acknowledgedAt (idempotent). */
-  async acknowledge(seniorId: string, alertId: string, personId: string): Promise<AlertChange | null> {
-    const current = await this.get(seniorId, alertId);
-    if (current.status === 'RESOLVED') throw new ConflictException('Alerte déjà résolue');
-    if (current.acknowledgedAt) return null;
-    const row = await this.prisma.alert.update({
-      where: { id: alertId },
-      data: { acknowledgedAt: new Date(), acknowledgedById: personId },
+  acknowledge(seniorId: string, alertId: string, personId: string): Promise<AlertChange | null> {
+    return this.applyMedicalAction(seniorId, alertId, (alert, now) => acknowledgeAlert(alert, personId, now));
+  }
+
+  /** Clôture par le médical après intervention (alerte escaladée uniquement). */
+  close(seniorId: string, alertId: string, personId: string): Promise<AlertChange | null> {
+    return this.applyMedicalAction(seniorId, alertId, (alert, now) => closeAlert(alert, personId, now));
+  }
+
+  private async applyMedicalAction(
+    seniorId: string,
+    alertId: string,
+    action: (alert: AlertRecord, now: Date) => ClosingResult,
+  ): Promise<AlertChange | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.alert.findFirst({ where: { id: alertId, seniorId } });
+      if (!row) throw new NotFoundException('Alerte introuvable');
+      const current = toRecord(row);
+      const result = action(current, new Date());
+      if (!result.ok) {
+        throw new ConflictException(
+          result.refusal === 'ALREADY_RESOLVED'
+            ? 'Alerte déjà résolue'
+            : "Seule une alerte escaladée se clôture ; la levée de doute en cours est gérée par la détection",
+        );
+      }
+      if (!result.changed) return null;
+      const next = result.next;
+      await tx.alert.update({
+        where: { id: alertId },
+        data: {
+          status: next.status,
+          resolvedAt: next.resolvedAt,
+          acknowledgedAt: next.acknowledgedAt,
+          acknowledgedById: next.acknowledgedById,
+          closedAt: next.closedAt,
+          closedById: next.closedById,
+        },
+      });
+      this.logger.log(`alerte ${alertId} : ${next.closedAt ? 'clôturée' : 'prise en charge'} par ${next.closedById ?? next.acknowledgedById}`);
+      return { previous: current, next, change: 'updated' as const };
     });
-    return { previous: current, next: toRecord(row), change: 'updated' };
   }
 }
 
@@ -90,5 +124,7 @@ export function toRecord(row: AlertRow): AlertRecord {
     acknowledgedAt: row.acknowledgedAt,
     acknowledgedById: row.acknowledgedById,
     resolvedAt: row.resolvedAt,
+    closedAt: row.closedAt,
+    closedById: row.closedById,
   };
 }

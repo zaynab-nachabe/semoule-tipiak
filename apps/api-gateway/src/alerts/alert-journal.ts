@@ -37,6 +37,8 @@ export function applyDomainEvent(current: AlertRecord | null, event: DomainEvent
           acknowledgedAt: null,
           acknowledgedById: null,
           resolvedAt: null,
+          closedAt: null,
+          closedById: null,
         },
       };
     }
@@ -75,6 +77,8 @@ export function applyDomainEvent(current: AlertRecord | null, event: DomainEvent
             acknowledgedAt: null,
             acknowledgedById: null,
             resolvedAt: null,
+            closedAt: null,
+            closedById: null,
           },
         };
       }

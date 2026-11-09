@@ -39,6 +39,7 @@ export function canAccessSenior(ctx: AccessContext, seniorId: string): boolean {
 export const Capability = {
   READ_MEASUREMENTS: ['MEDICAL'],
   ACKNOWLEDGE_ALERT: ['MEDICAL'],
+  CLOSE_ALERT: ['MEDICAL'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export function hasCapability(role: Role, capability: keyof typeof Capability): boolean {

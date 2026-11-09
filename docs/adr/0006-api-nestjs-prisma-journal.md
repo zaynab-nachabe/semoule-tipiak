@@ -26,7 +26,7 @@ L'application web (trois vues) a besoin d'un point d'entrée unique qui authenti
 - Limites, à reporter dans la matrice des risques :
   - **jeton sans état** : la déconnexion ne l'invalide pas côté serveur (il expire au bout de 12 h) ;
   - **pas de mot de passe** : n'importe qui ayant accès à l'application peut se connecter sous n'importe quel compte (acceptable pour le sujet, pas en production) ;
-  - **une alerte escaladée ne se clôt pas** : seule la prise en charge (`acknowledgedAt`) est enregistrée, l'alerte reste « en cours » ;
+  - **la détection n'est pas informée de la clôture** d'une alerte par l'équipe médicale (`POST …/close`) : si elle était au niveau 2, elle peut encore publier un passage au niveau 3, que le journal ignore puisque l'alerte est close ;
   - **historique sans durée de conservation** : la table `signals` grossit sans limite (point RGPD ouvert) ;
   - une annulation reçue **avant** la création de la levée de doute (motif inconnu) n'est pas journalisée.
 

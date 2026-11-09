@@ -153,6 +153,21 @@ await step('prise en charge par le médical : 200, et la famille la voit en temp
   await waitUntil(() => inbox.FAMILY.some((m) => m.type === 'alert.updated' && m.message.acknowledgedAt), 5_000, 'prise en charge visible');
 });
 
+await step('clôture après intervention : médical uniquement, la famille la voit, l\'alerte n\'est plus en cours', async () => {
+  assert.equal((await api(`/seniors/${SENIOR}/alerts/${alertId}/close`, { method: 'POST', token: tokens.FAMILY })).status, 403);
+  const { status, body } = await api(`/seniors/${SENIOR}/alerts/${alertId}/close`, { method: 'POST', token: tokens.MEDICAL });
+  assert.equal(status, 200);
+  assert.equal(body.status, 'RESOLVED');
+  assert.ok(body.closedAt);
+  await waitUntil(() => inbox.FAMILY.some((m) => m.type === 'alert.updated' && m.message.closedAt), 5_000, 'clôture visible');
+  // D'autres alertes peuvent rester ouvertes si la base n'est pas neuve : on vérifie celle du scénario.
+  const { activeAlert } = (await api(`/seniors/${SENIOR}/status`, { token: tokens.FAMILY })).body;
+  assert.notEqual(activeAlert?.alertId, alertId, 'l\'alerte clôturée ne doit plus être l\'alerte en cours');
+  const again = await api(`/seniors/${SENIOR}/alerts/${alertId}/close`, { method: 'POST', token: tokens.MEDICAL });
+  assert.equal(again.status, 409);
+  assert.equal(again.body.error.code, 'CONFLICT');
+});
+
 for (const socket of sockets) socket.close();
 for (const [status, name] of results) console.log(status, name);
 const failed = results.filter(([s]) => s === 'FAIL').length;

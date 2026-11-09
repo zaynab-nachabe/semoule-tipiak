@@ -52,6 +52,8 @@ const alert = (patch: Partial<AlertRecord> = {}): AlertRecord => ({
   acknowledgedAt: null,
   acknowledgedById: null,
   resolvedAt: null,
+  closedAt: null,
+  closedById: null,
   ...patch,
 });
 
@@ -71,6 +73,16 @@ describe('projection d\'une alerte selon le rôle (minimisation des données)', 
     expect(isPushedTo(preConfirming, 'MEDICAL')).toBe(false);
     expect(isPushedTo(preConfirming, 'SENIOR')).toBe(true);
     expect(isPushedTo(alert(), 'FAMILY')).toBe(true);
+  });
+  it('temps réel : une alerte escaladée puis clôturée reste suivie par la famille et le médical', () => {
+    const closed = alert({ status: 'RESOLVED', resolvedAt: new Date(), closedAt: new Date() });
+    expect(isPushedTo(closed, 'FAMILY')).toBe(true);
+    expect(isPushedTo(closed, 'MEDICAL')).toBe(true);
+    expect(toAlertView(closed, 'FAMILY').closedAt).not.toBeNull();
+  });
+  it('temps réel : une levée de doute annulée (jamais escaladée) n\'est pas poussée à la famille', () => {
+    const canceled = alert({ status: 'RESOLVED', severity: null, escalationCause: null, cancellationCause: 'SENIOR_CANCELED', resolvedAt: new Date() });
+    expect(isPushedTo(canceled, 'FAMILY')).toBe(false);
   });
 });
 

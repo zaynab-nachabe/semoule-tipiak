@@ -39,6 +39,7 @@ prisma/            schéma et migrations (première version : lot B1, Anaïs Lac
 | `GET` | `/seniors/{seniorId}/alerts` | tous | Historique paginé (`?page=&pageSize=`) |
 | `GET` | `/seniors/{seniorId}/alerts/{alertId}` | tous | Une alerte |
 | `POST` | `/seniors/{seniorId}/alerts/{alertId}/acknowledge` | médical | Prise en charge |
+| `POST` | `/seniors/{seniorId}/alerts/{alertId}/close` | médical | Clôture après intervention (alerte escaladée uniquement, sinon `409`) |
 | `GET` | `/seniors/{seniorId}/measurements?type=HEART_RATE&from=&to=` | médical | Mesures brutes (`HEART_RATE`, `FALL_IMPACT`, `SENSOR_HEARTBEAT`) |
 | `GET` | `/health` | public | État de la base et du lien MQTT |
 
@@ -71,7 +72,7 @@ PRE_CONFIRMATION_DELAY_S=6 CRITICAL_ESCALATION_DELAY_S=6 docker compose up -d --
 PRE_CONFIRMATION_DELAY_S=6 CRITICAL_ESCALATION_DELAY_S=6 node apps/api-gateway/test/e2e/fall-scenario.e2e.mjs
 ```
 
-Il envoie une chute par la « montre » et vérifie, pour chaque rôle, le temps réel (niveaux 1, 2, 3), la consultation REST, les règles d'accès (401, 403) et la prise en charge.
+Il envoie une chute par la « montre » et vérifie, pour chaque rôle, le temps réel (niveaux 1, 2, 3), la consultation REST, les règles d'accès (401, 403), la prise en charge et la clôture.
 
 ## Configuration
 
@@ -88,11 +89,10 @@ Il envoie une chute par la « montre » et vérifie, pour chaque rôle, le temps
 
 | Élément du contrat | Étape prévue |
 |---|---|
-| `POST …/alerts/{alertId}/cancel`, `POST …/help` (actions du senior) | Application web (le chemin app → API → pipeline reste à décider) |
+| `POST …/alerts/{alertId}/cancel`, `POST …/help` (actions du senior) | Application web, via Node-RED ([ADR 0007](../../docs/adr/0007-actions-application-via-ingestion.md)) |
 | `GET …/activity`, `GET …/sensors` | Inactivité (scénario B) et surveillance des capteurs |
 | `GET`/`PUT …/thresholds`, `…/routines`, `…/contacts` | Inactivité (scénario B) |
-| Clôture d'une alerte escaladée | À décider (voir ADR 0006) |
 
 ## Limites connues
 
-Voir [ADR 0006](../../docs/adr/0006-api-nestjs-prisma-journal.md) : jeton sans révocation, pas de mot de passe, alerte escaladée jamais close, historique sans durée de conservation, une seule instance (identifiant MQTT fixe).
+Voir [ADR 0006](../../docs/adr/0006-api-nestjs-prisma-journal.md) : jeton sans révocation, pas de mot de passe, détection non informée de la clôture d'une alerte, historique sans durée de conservation, une seule instance (identifiant MQTT fixe).

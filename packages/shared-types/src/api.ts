@@ -33,6 +33,8 @@ export interface AlertView {
   createdAt: IsoUtcTimestamp;
   acknowledgedAt: IsoUtcTimestamp | null;
   resolvedAt: IsoUtcTimestamp | null;
+  /** Clôture par l'équipe médicale après intervention (alerte escaladée). */
+  closedAt: IsoUtcTimestamp | null;
 }
 
 /** Un point de série temporelle (graphiques). */

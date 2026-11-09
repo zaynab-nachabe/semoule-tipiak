@@ -197,6 +197,8 @@ model Alert {
   acknowledgedAt     DateTime? // renseigné quand le médical prend en charge
   acknowledgedById   String? // personne qui a pris en charge (traçabilité)
   resolvedAt         DateTime?
+  closedAt           DateTime? // clôture par le médical après intervention (alerte escaladée)
+  closedById         String? // personne qui a clôturé (traçabilité)
 
   @@index([seniorId, createdAt])
   @@map("alerts")

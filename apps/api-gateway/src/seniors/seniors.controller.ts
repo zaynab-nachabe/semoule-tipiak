@@ -69,6 +69,21 @@ export class SeniorsController {
     return toAlertView(change?.next ?? (await this.alerts.get(seniorId, alertId)), ctx.role);
   }
 
+  /** Clôture d'une alerte escaladée par l'équipe médicale, après intervention. */
+  @Post('alerts/:alertId/close')
+  @HttpCode(200)
+  async close(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('seniorId') seniorId: string,
+    @Param('alertId') alertId: string,
+  ): Promise<AlertView> {
+    const ctx = await this.access.assertCanAccess(user.personId, seniorId);
+    this.access.assertCapability(ctx, 'CLOSE_ALERT');
+    const change = await this.alerts.close(seniorId, alertId, user.personId);
+    if (change) await this.realtime.publishAlertChange(change);
+    return toAlertView(change?.next ?? (await this.alerts.get(seniorId, alertId)), ctx.role);
+  }
+
   /** Mesures brutes (médical uniquement) : ?type=HEART_RATE&from=…&to=… */
   @Get('measurements')
   async measurements(

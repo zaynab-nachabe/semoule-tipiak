@@ -10,6 +10,7 @@ Chaque ADR justifie une décision structurante : contexte, décision, conséquen
 | [0004](0004-sequence-de-relevement.md) | Séquence de relèvement en deux signaux plutôt qu'un déclencheur unique | Acceptée |
 | [0005](0005-echelle-de-gravite.md) | Échelle de gravité à 4 niveaux et passage automatique au niveau 3 | Acceptée |
 | [0006](0006-api-nestjs-prisma-journal.md) | API NestJS 11 + Prisma 5, journal des alertes et historique alimentés par les événements | Acceptée |
+| [0007](0007-actions-application-via-ingestion.md) | Les actions de l'application passent par l'ingestion, comme des signaux | Acceptée |
 
 ## Modèle
 
