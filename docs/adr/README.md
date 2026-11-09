@@ -9,6 +9,7 @@ Chaque ADR justifie une décision structurante : contexte, décision, conséquen
 | [0003](0003-detection-chute-deux-niveaux.md) | Détection de chute répartie entre la montre et le système, seuil d'impact à 3,0 g | Acceptée |
 | [0004](0004-sequence-de-relevement.md) | Séquence de relèvement en deux signaux plutôt qu'un déclencheur unique | Acceptée |
 | [0005](0005-echelle-de-gravite.md) | Échelle de gravité à 4 niveaux et passage automatique au niveau 3 | Acceptée |
+| [0006](0006-api-nestjs-prisma-journal.md) | API NestJS 11 + Prisma 5, journal des alertes et historique alimentés par les événements | Acceptée |
 
 ## Modèle
 

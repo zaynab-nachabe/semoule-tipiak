@@ -54,8 +54,8 @@ Les jokers MQTT permettent à chaque service de ne recevoir que ce qui le concer
 | Node-RED | `zigbee2mqtt/+` | Tous les capteurs fixes |
 | Détection | `signals/+/+` | Tous les signaux de tous les seniors |
 | Notification | `alerts/+/CriticalAlertGenerated` et `alerts/+/PreConfirmationRequested` | Les alertes à envoyer et les demandes de levée de doute à pousser sur la montre |
-| api-gateway | `alerts/#` | Tous les événements de domaine, relayés en WebSocket aux frontends |
-| Historisation | `signals/#` | Tous les signaux, pour l'historique en base |
+| api-gateway | `alerts/#` | Tous les événements de domaine : journal des alertes en base, relayés en WebSocket à l'application web |
+| api-gateway (historique) | `signals/#` | Tous les signaux, enregistrés dans l'historique en base (table `signals`) |
 
 Un frontend ne s'abonne jamais directement au broker : il passe par l'api-gateway, qui filtre selon les droits de l'utilisateur.
 

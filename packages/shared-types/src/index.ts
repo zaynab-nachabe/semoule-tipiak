@@ -3,3 +3,4 @@ export * from './signals.js';
 export * from './domain-events.js';
 export * from './rejected-message.js';
 export * from './topics.js';
+export * from './api.js';

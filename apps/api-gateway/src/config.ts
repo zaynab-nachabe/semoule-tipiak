@@ -1,0 +1,23 @@
+// Configuration lue dans les variables d'environnement (docker-compose.yml).
+
+export interface ApiConfig {
+  readonly port: number;
+  readonly mqttUrl: string;
+  readonly mqttClientId: string;
+  readonly jwtSecret: string;
+  readonly jwtExpiresIn: string;
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
+  const port = Number(env.PORT || 3000);
+  if (!Number.isInteger(port) || port <= 0) throw new Error(`PORT invalide : ${env.PORT}`);
+  return {
+    port,
+    mqttUrl: env.MQTT_URL || 'mqtt://localhost:1883',
+    mqttClientId: env.MQTT_CLIENT_ID || 'api-gateway',
+    jwtSecret: env.JWT_SECRET || 'dev-secret-change-me',
+    jwtExpiresIn: env.JWT_EXPIRES_IN || '12h',
+  };
+}
+
+export const API_CONFIG = Symbol('API_CONFIG');

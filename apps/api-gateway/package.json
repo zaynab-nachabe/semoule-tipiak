@@ -1,14 +1,42 @@
 {
-  "name": "api-gateway",
-  "devDependencies": {
-    "prisma": "^5.22.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+  "name": "@project/api-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API NestJS : point d'entrée unique de l'application web (REST + WebSocket), historique des alertes et des signaux",
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "seed": "node dist/seed.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "typecheck": "prisma generate && tsc --noEmit -p tsconfig.json",
+    "test": "prisma generate && jest"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/platform-express": "^11.1.0",
+    "@nestjs/platform-socket.io": "^11.1.0",
+    "@nestjs/websockets": "^11.1.0",
+    "@prisma/client": "5.22.0",
+    "@project/shared-types": "*",
+    "ajv": "^8.17.1",
+    "mqtt": "^5.16.1",
+    "prisma": "5.22.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
   },
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/testing": "^11.1.0",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "jest": "^30.0.0",
+    "socket.io-client": "^4.8.1",
+    "ts-jest": "^29.4.0",
+    "typescript": "^5.6.0"
   }
 }
