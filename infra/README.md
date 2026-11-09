@@ -5,7 +5,7 @@ Socle du projet, lancé avec Docker Compose : broker MQTT, base de données, pas
 ## Prérequis
 
 - [Docker](https://www.docker.com/) et Docker Compose installés (rien d'autre : Node.js n'est pas nécessaire sur la machine)
-- Les ports suivants libres sur la machine : `1883` (MQTT), `5432` (PostgreSQL), `1880` (Node-RED)
+- Les ports suivants libres sur la machine : `1883` (MQTT), `5432` (PostgreSQL), `1880` (Node-RED), `3000` (API)
 
 ## Premier lancement
 
@@ -29,6 +29,7 @@ Au premier lancement, Docker télécharge les images et construit celle de la d�
 | **postgres** | Base de données relationnelle | `localhost:5432` (base/identifiants définis dans `.env`) |
 | **node-red** | Passerelle d'ingestion (et simulateur de capteurs) | Interface web : http://localhost:1880 |
 | **detection** | Corrélation des signaux, levée de doute, alertes | Journal : `docker compose logs -f detection` |
+| **api-gateway** | API REST + WebSocket, journal des alertes, historique des signaux | http://localhost:3000 (`/health`, `/auth/users`) |
 
 Les services communiquent entre eux par leur **nom** sur le réseau Docker commun (ex. depuis Node-RED, le broker est joignable à `mosquitto:1883`).
 
@@ -54,7 +55,7 @@ Pour lancer en arrière-plan (sans bloquer le terminal) : `docker compose up --b
 
 ## Dépannage
 
-**Les données** (PostgreSQL dans `pgdata`, sessions MQTT dans `mosquitto-data`) sont conservées entre les redémarrages. Pour repartir de zéro :
+**Les données** (PostgreSQL dans `pgdata`, sessions MQTT dans `mosquitto-data`, état de Node-RED dans `node-red-data`) sont conservées entre les redémarrages. Les flows, eux, restent dans le dépôt (`services/ingestion/flows.json`). Pour repartir de zéro :
 ```bash
 docker compose down -v    # le -v supprime aussi les volumes
 ```

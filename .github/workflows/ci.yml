@@ -1,13 +1,15 @@
 # CI : se déclenche à chaque push, sur toutes les branches.
 # Les résultats s'affichent aussi sur la pull request de la branche.
 #
-#   infra : docker-compose.yml valide avec les variables de .env.example
+#   infra : docker-compose.yml valide, images construites, puis scénario de chute de bout en bout
+#           sur la pile complète (Node-RED, détection, API, broker, base), délais raccourcis
 #   tests : sur Node 22 et 24 (versions LTS)
 #     - typecheck  : tous les workspaces TypeScript compilent en mode strict
 #     - npm test   : tests de tous les workspaces, dont
 #         * contrat d'événements (packages/shared-types) : exemples de docs/format-evenements.md,
 #           JSON Schemas, enums TypeScript et sortie du flow Node-RED vérifiés ensemble
-#         * détection (services/detection) : règles du scénario A du DDD
+#         * détection (services/detection) : règles du scénario A du DDD, intégration MQTT
+#         * API (apps/api-gateway) : journal des alertes, règles d'accès, projections par rôle
 #
 # Un nouveau service avec un script "test" ou "typecheck" est pris en compte automatiquement.
 
@@ -21,6 +23,10 @@ on:
 jobs:
   infra:
     runs-on: ubuntu-latest
+    env:
+      PRE_CONFIRMATION_DELAY_S: 6
+      RECOVERY_WINDOW_S: 8
+      CRITICAL_ESCALATION_DELAY_S: 6
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,21 +40,22 @@ jobs:
       - name: Construire les images
         run: docker compose build
 
-      # Démarre le broker et la détection, envoie une chute et vérifie que l'alerte de niveau 1 est publiée
-      - name: Test de bout en bout (broker + détection)
-        run: |
-          docker compose up -d mosquitto detection
-          for i in $(seq 1 30); do
-            docker compose logs detection | grep -q "connecté et abonné" && break
-            sleep 1
-          done
-          docker compose exec -T mosquitto sh -c '
-            mosquitto_sub -h localhost -t "alerts/#" -C 1 -W 15 > /tmp/alert.json &
-            sleep 1
-            mosquitto_pub -h localhost -q 1 -t signals/senior-001/FALL_IMPACT -m "{\"eventId\":\"a1b2c3d4-0000-4000-8000-000000000001\",\"seniorId\":\"senior-001\",\"sensorId\":\"watch-001\",\"type\":\"FALL_IMPACT\",\"timestamp\":\"2026-01-15T14:32:08.000Z\",\"payload\":{\"value\":9.8,\"unit\":\"g\"}}"
-            wait
-            cat /tmp/alert.json
-            grep -q PreConfirmationRequested /tmp/alert.json'
+      - name: Démarrer la pile complète
+        run: docker compose up -d --wait
+
+      - name: Installer Node.js (client du scénario)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      # Une chute envoyée par la « montre » traverse Node-RED, la détection et l'API :
+      # niveaux 1, 2 et 3, ce que voit chaque rôle (temps réel et REST), règles d'accès, prise en charge.
+      - name: Scénario de chute de bout en bout
+        run: node apps/api-gateway/test/e2e/fall-scenario.e2e.mjs
 
       - name: Journaux en cas d'échec
         if: failure()
@@ -81,5 +88,5 @@ jobs:
       - name: Vérifier les types (tous les workspaces)
         run: npm run typecheck
 
-      - name: Tests (contrat d'événements, détection)
+      - name: Tests (contrat d'événements, détection, API)
         run: npm test

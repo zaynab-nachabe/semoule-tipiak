@@ -34,7 +34,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"   # port hôte surchargeable (ex. si un Postgres local occupe déjà 5432)
     volumes:
       - pgdata:/var/lib/postgresql/data   # persistance des données entre les redémarrages
     healthcheck:
@@ -52,8 +52,14 @@ services:
     container_name: node-red
     ports:
       - "1880:1880"          # interface web de Node-RED
+    environment:
+      FLOWS: /flows/flows.json   # variable de l'image Node-RED : flows lus et enregistrés dans le dépôt
     volumes:
-      - ./services/ingestion:/data   # monte la config (settings.js) et les flows
+      # État d'exécution (modules, clé de chiffrement, contexte) dans un volume Docker : le conteneur
+      # (utilisateur 1000) peut y écrire quel que soit le propriétaire du dossier du dépôt sur la machine.
+      - node-red-data:/data
+      - ./services/ingestion/settings.js:/data/settings.js:ro   # configuration, en lecture seule
+      - ./services/ingestion:/flows                              # flows du dépôt (modifiables depuis l'éditeur)
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -82,6 +88,35 @@ services:
     networks:
       - app-network
 
+  # --- API : point d'entrée unique de l'application web (REST + WebSocket), historique ---
+  api-gateway:
+    build:
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: api-gateway
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_CLIENT_ID: api-gateway
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - app-network
+
 # --- Réseau commun : permet aux services de se joindre par leur nom ---
 networks:
   app-network:
@@ -90,3 +125,4 @@ networks:
 volumes:
   pgdata:           # données PostgreSQL
   mosquitto-data:   # persistance du broker MQTT
+  node-red-data:    # état d'exécution de Node-RED (modules, clé, contexte)

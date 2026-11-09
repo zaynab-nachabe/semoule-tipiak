@@ -13,7 +13,9 @@ Fichiers :
 | Fichier | Rôle |
 |---|---|
 | `flows.json` | Les flows : onglet **Ingestion** (le vrai pipeline) et onglet **Simulateur** (capteurs simulés pour tester) |
-| `settings.js` | Configuration de Node-RED (monté dans le conteneur sur `/data`) |
+| `settings.js` | Configuration de Node-RED (montée en lecture seule dans le conteneur) |
+
+**Sous Docker**, les flows sont lus et enregistrés directement dans ce dossier (monté sur `/flows`, variable `FLOWS` de l'image) : un « Deploy » dans l'éditeur modifie `flows.json` du dépôt. L'état d'exécution de Node-RED (modules, clé de chiffrement, contexte) est dans le volume Docker `node-red-data`, pour que le conteneur puisse y écrire quel que soit le propriétaire du dossier du dépôt sur la machine.
 
 ## Capteurs réels
 
