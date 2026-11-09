@@ -14,7 +14,7 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 ### 1.1. Les Acteurs et Rôles
 *   **Personne Accompagnée / `Senior`** : L'acteur principal du système. Il s'agit d'une personne autonome vivant seule, qui génère des données et interagit avec le système pour confirmer ou infirmer son état de santé.
 *   **Aidant / `MedicalStaff`** : Le corps médical. Il peut s'agir d'un médecin, d'une infirmière... Il reçoit les alertes critiques et peut consulter l'historique des événements.
-*  ** Proche / `FamilyMember`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
+*   **Proche / `FamilyMember`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
 
 ### 1.2. Les Concepts Métiers Fondamentaux
 *   **Profil d'Activité / `ActivityProfile`** : Le modèle de référence définissant la routine habituelle de la personne accompagnée (calculé historiquement) (ex: temps passé habituellement dans la salle de bain le matin).
@@ -22,7 +22,9 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 *   **Signal Brut / `RawSignal`** : Une donnée entrante, issue d'un capteur matériel (montre, détecteur PIR). Un signal seul ne déclenche jamais d'alerte.
 *   **Fenêtre d'Inactivité / `InactivityWindow`** : Période calculée par le système représentant une absence de `RawSignal` dans une zone donnée.
 *   **Pré-confirmation (Levée de doute) / `PreConfirmation`** : Mécanisme d'interaction directe avec le `Senior`. Le système lui demande de confirmer son état (via un écran ou une montre) avant de qualifier l'incident.
-*   **Alerte Critique / `CriticalAlert`** : Un incident avéré (soit confirmé par le `Senior`, soit non infirmé après expiration de la `PreConfirmation`). Elle déclenche le protocole d'assistance.
+*   **Alerte Critique / `CriticalAlert`** : Un incident avéré (soit confirmé par le `Senior`, soit non infirmé après expiration de la `PreConfirmation`). Elle déclenche le protocole d'assistance. Elle porte un **niveau de gravité** : `WARNING` (non infirmée) ou `CRITICAL` (urgence confirmée).
+*   **Niveau de gravité / `Severity`** : Échelle à 4 niveaux qui dit quoi faire : `SYSTEM` (0, événement technique : batterie faible, capteur muet), `PRE_ALERT` (1, levée de doute en cours), `WARNING` (2, incident non infirmé : la famille est prévenue), `CRITICAL` (3, urgence confirmée : l'équipe médicale et la famille sont prévenues). Voir [ADR 0005](adr/0005-echelle-de-gravite.md).
+*   **Séquence de relèvement / `RecoveryProgress`** : Preuve que la personne s'est relevée après un impact. Un signal isolé ne suffit pas (une personne au sol peut bouger) : il faut une **activité** (mouvement ou bande de pression), puis une **stabilité** (personne sur le lit ou le fauteuil, ou déplacée dans une autre pièce). Voir [ADR 0004](adr/0004-sequence-de-relevement.md).
 
 ---
 
@@ -31,11 +33,16 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 Pour valider notre compréhension du flux de données et des règles de décision, voici les scénarios métiers de référence (Domain Stories).
 
 ### Scénario A : Chute suspectée résolue par le Senior (Fausse Alerte)
-1.  L'accéléromètre de la montre génère un `RawSignal` de type *Impact*.
-2.  Le système de détection reçoit le signal et initie immédiatement un processus de `PreConfirmation`.
+1.  La montre reconnaît une chute (pic d'accélération puis changement d'orientation) et génère un `RawSignal` de type *Impact* (`FALL_IMPACT`, pic de 9,8 g).
+2.  Le système de détection reçoit le signal : l'impact dépasse le seuil de 3,0 g, il initie immédiatement un processus de `PreConfirmation` (niveau 1, `PRE_ALERT`).
 3.  La montre du `Senior` vibre et affiche la question : "Avez-vous chuté ?". Un minuteur de 60 secondes démarre.
 4.  Le `Senior` appuie sur "Non, tout va bien".
 5.  Le système annule la procédure. Aucune `CriticalAlert` n'est générée, évitant ainsi de déranger inutilement les `MedicalStaff`. L'événement est toutefois journalisé pour l'historique médical.
+
+**Variantes du scénario A** (même début, étapes 1 à 3) :
+*   **Le `Senior` se relève sans répondre** : un détecteur voit du mouvement dans la chambre, puis la bande de pression du lit passe à « appuyée » : la séquence de relèvement est complète, la procédure est annulée comme en 5.
+*   **Le `Senior` reste au sol** : le minuteur expire sans réponse ni relèvement. Le système génère une `CriticalAlert` de niveau `WARNING` : la famille est prévenue dans l'application. Cinq minutes plus tard, toujours aucun signe de relèvement : l'alerte passe au niveau `CRITICAL` et l'équipe médicale est prévenue à son tour.
+*   **Le `Senior` demande de l'aide** : il appuie sur le bouton d'aide pendant la question ou après l'alerte de niveau `WARNING` : l'alerte passe immédiatement au niveau `CRITICAL`.
 
 ### Scénario B : Inactivité anormale avec escalade (Alerte Réelle)
 1.  Le système détecte une `InactivityWindow` de 2 heures dans le salon.
@@ -44,7 +51,7 @@ Pour valider notre compréhension du flux de données et des règles de décisio
 4.  Le délai de la `PreConfirmation` expire sans réponse de la part du `Senior`.
 5.  Le système croise cette information avec l'absence de `RawSignal` cardiaque (montre déconnectée ou signal plat).
 6.  Le système génère une `CriticalAlert` avec le motif *Inactivité prolongée et absence de réponse*.
-7.  Le module de notification distribue la `CriticalAlert` aux `MedicalStaff` selon leurs préférences (SMS à la famille, notification web à l'équipe médicale).
+7.  Le module de notification distribue la `CriticalAlert` selon sa gravité, dans l'application : vue famille et vue de l'équipe médicale.
 
 ## 3. DDD Stratégique (Strategic Design) & Context Map
 
@@ -63,7 +70,7 @@ Nécessaires au fonctionnement global, mais ne portant pas l'algorithmique de d�
 ### 3.3. Generic Subdomains (Domaines génériques)
 Des problèmes standards déjà résolus par l'industrie, que nous intégrons sans y investir trop de logique métier.
 
-*   **`Notification Context`** : Responsable de la distribution finale des messages (envoi effectif des Push, SMS ou Emails) selon les préférences des utilisateurs.
+*   **`Notification Context`** : Responsable de la distribution finale des alertes : choix des destinataires selon la gravité, affichage dans l'application (vues famille et médicale) et journalisation. Un canal externe (SMS, push) pourrait s'y ajouter sans changer les autres contextes.
 *   **`Authentication Context`** : Gestion des sessions sécurisées (JWT, Login).
 
 ### 3.4. Context Map (Cartographie des relations)
@@ -76,7 +83,7 @@ Pour que ces *Bounded Contexts* collaborent sans partager le même modèle de ba
     *   Le `Correlation Context` a besoin de lire les `ToleranceThresholds` stockés dans le `Profile Management Context` pour prendre ses décisions.
 3.  **Relation Détection -> Notification**
     *   Le `Correlation Context` (Upstream) émet un événement asynchrone `CriticalAlertGenerated`. Le `Notification Context` (Downstream) l'écoute et se charge de prévenir les `FamilyMembers` et `MedicalStaffs`.
-    *   **Note d'infrastructure** : Pour éviter la complexité d'un bus de messages lourd tout en respectant l'architecture événementielle, ce couplage sera implémenté en réutilisant le broker MQTT (Mosquitto) déjà présent pour l'ingestion des capteurs. Le service de détection publiera l'alerte sur un topic interne dédié que le module de notification écoutera.
+    *   **Note d'infrastructure** : Pour éviter la complexité d'un bus de messages lourd tout en respectant l'architecture événementielle, ce couplage est implémenté en réutilisant le broker MQTT (Mosquitto) déjà présent pour l'ingestion des capteurs ([ADR 0002](adr/0002-mqtt-seul-bus-de-messages.md)). Le service de détection publie ses événements sur `alerts/{seniorId}/{eventType}`, que le module de notification écoute (voir `topics-mqtt.md`).
 
 ## 4. DDD Tactique (Tactical Design)
 
@@ -100,10 +107,14 @@ Cette section se concentre sur l'intérieur de notre *Bounded Context* principal
 Objets possédant une identité unique qui évolue dans le temps (cycle de vie).
 
 * **`Alert`**
-  * *Attributs :* `alertId`, `seniorId`, `createdAt`, `status` (Enum: PENDING, PRE_CONFIRMING, ESCALATED, RESOLVED), `reason` (Enum: FALL_DETECTED, PROLONGED_INACTIVITY).
+  * *Attributs :* `alertId`, `seniorId`, `createdAt`, `status` (Enum: PENDING, PRE_CONFIRMING, ESCALATED, RESOLVED), `reason` (Enum: FALL_DETECTED, PROLONGED_INACTIVITY, HELP_REQUESTED), `severity` (`WARNING` ou `CRITICAL`, renseignée à l'escalade).
   * *Comportements :*
-    * `escalate()` : Passe le statut à ESCALATED (Alerte critique).
-    * `resolve(resolutionReason)` : Clôture l'alerte (ex: fausse alerte confirmée par un mouvement).
+    * `startPreConfirmation()` : Passe de PENDING à PRE_CONFIRMING (levée de doute en cours).
+    * `escalate(severity)` : Passe le statut à ESCALATED (Alerte critique) au niveau `WARNING` ou `CRITICAL`.
+    * `raiseToCritical()` : Fait passer une alerte escaladée de `WARNING` à `CRITICAL`.
+    * `resolve(resolutionReason)` : Clôture l'alerte (ex: fausse alerte confirmée par un relèvement), pendant la levée de doute ou après une alerte `WARNING`.
+  * *Invariants :* une alerte `CRITICAL` n'évolue plus ; une alerte est **active** tant qu'elle peut encore évoluer (PENDING, PRE_CONFIRMING, ou ESCALATED en `WARNING`).
+  * *Cycle de vie :* `PENDING → PRE_CONFIRMING → ESCALATED (WARNING → CRITICAL) | RESOLVED`.
 
 ### 4.3. Objets de Valeur (Value Objects) & Enums
 
@@ -116,42 +127,53 @@ Objets immuables définis uniquement par leurs propriétés. S'ils changent, on 
 * **`RawSignal`** : `{ eventId: string, seniorId: string, sensorId: string, type: SignalType, timestamp: Date, payload: SignalPayload }`
   * **`SignalPayload`** (le contenu dépend du `type`) :
     * **PIRMotionPayload** : `{ room: string }`
-    * **PressurePlatePayload** : `{ location: string, state: 'PRESSED' | 'RELEASED' }`
+    * **PressurePlatePayload** : `{ room: string, location: string, state: 'PRESSED' | 'RELEASED' }`
     * **HeartRatePayload** : `{ value: number, unit: 'bpm' }`
     * **FallImpactPayload** : `{ value: number, unit: 'g' }`
     * **HelpButtonPayload** : `{}`
-    * **CancelAlertPayload** : `{ alertId: string }`
+    * **CancelAlertPayload** : `{ alertId?: string }` (sans `alertId`, l'annulation porte sur toutes les levées de doute en cours)
     * **SensorHeartbeatPayload** : `{ value: number, unit: '%' }`
 
   > Convention : toute donnée mesurée porte `{ value, unit }` ; les états et références (pièce, emplacement, identifiant) utilisent un champ nommé.
 
-* **`ToleranceThreshold`** : `{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, severity: 'HIGH' }`
+* **`ToleranceThreshold`** : `{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, severity: 'WARNING' }`
 * **`TimeRange`** : `{ startTime: '22:00', endTime: '07:00' }`
 * **`PreConfirmation`** : `{ seniorId: string, alertId: string, requestedAt: Date, expiresAt: Date }`
+* **`Severity` (Enum)** : `SYSTEM`, `PRE_ALERT`, `WARNING`, `CRITICAL` (niveaux 0 à 3, voir §1.2).
+* **`EscalationCause` (Enum)** : pourquoi une alerte est escaladée : `NO_RESPONSE` (levée de doute expirée, niveau 2), `SENIOR_CONFIRMED` (bouton d'aide pendant l'incident, niveau 3), `IMMEDIATE` (demande d'aide spontanée, niveau 3), `NO_RECOVERY` (niveau 2 resté sans relèvement, niveau 3).
+* **`CancellationCause` (Enum)** : `SENIOR_CANCELED` (« tout va bien »), `ACTIVITY_RESUMED` (séquence de relèvement observée).
+* **`RecoveryProgress`** : état de la séquence de relèvement après un impact : `FALLEN` → `ACTIVE { activityAt, room }` → `RECOVERED { confirmedAt, confirmingEventId }`. Immuable : chaque signal d'activité produit un nouvel état.
+* **`FallDetectionPolicy`** : paramètres de la détection de chute : `minFallImpact` (3,0 g), `preConfirmationDelayMs` (60 s), `recoveryConfirmationWindowMs` (90 s), `criticalEscalationDelayMs` (5 min). Voir ADR 0003 à 0005.
 
 ### 4.4. Événements de Domaine (Domain Events)
 
 Ils permettent aux différentes parties du système de réagir de manière asynchrone (conception événementielle interne au contexte, voir note d'infrastructure en 3.4).
 
-* *Événements d'entrée :*
-  * `RawSignalReceived` : Émis par Node-RED, déclenche l'analyse.
-  * `FallSuspected` : Déclenche la demande de pré-confirmation.
-  * `PreConfirmationTimeoutExpired` : Déclenché par un minuteur interne si le senior ne répond pas.
-  * `PreConfirmationCanceled` : Le senior a indiqué que tout va bien ; annule la procédure.
-* *Événements de sortie :*
-  * `PreConfirmationRequested` : Demande d'afficher l'alerte sur la montre ou la tablette.
-  * `CriticalAlertGenerated` : Déclenche l'envoi du SMS/Push par le module de notification.
+* *Événement d'entrée :*
+  * `RawSignalReceived` : Émis par Node-RED (signal normalisé sur `signals/{seniorId}/{type}`), déclenche l'analyse.
+* *Événement interne au contexte :*
+  * `FallSuspected` : Impact au-dessus du seuil ; déclenche la demande de pré-confirmation.
+* *Événements de sortie* (publiés sur `alerts/{seniorId}/{eventType}`, format dans `format-evenements.md` §6) :
+  * `PreConfirmationRequested` : Demande d'afficher la question sur la montre ou la tablette (niveau 1).
+  * `PreConfirmationCanceled` : Le senior a indiqué que tout va bien, ou s'est relevé ; la procédure est annulée et journalisée.
+  * `PreConfirmationTimeoutExpired` : Déclenché par un minuteur interne si le senior ne répond pas ni ne se relève.
+  * `CriticalAlertGenerated` : Incident avéré, avec sa gravité ; déclenche la distribution par le module de notification. Une même alerte peut être publiée deux fois : en `WARNING`, puis en `CRITICAL`.
 
 ### 4.5. Services de Domaine (Domain Services)
 
-* **`CorrelationService`** : Reçoit les `RawSignalReceived`, interroge l'`ActivityProfileRepository` pour connaître les seuils, et applique les règles métiers complexes (« si Chute + Inactivité > Seuil → `CriticalAlertGenerated` »). Il s'appuie sur l'`ActivityHistory` pour raisonner sur les derniers signaux.
+* **`CorrelationService`** : Reçoit les `RawSignalReceived`, interroge l'`ActivityProfileRepository` pour connaître les seuils, et applique les règles métiers complexes. Il s'appuie sur l'`ActivityHistory` pour raisonner sur les derniers signaux. Pour la chute (« si Chute + Inactivité > Seuil → `CriticalAlertGenerated` ») :
+  * impact ≥ `minFallImpact` → `FallSuspected` → `PreConfirmationRequested` (niveau 1) ;
+  * « tout va bien » ou séquence de relèvement complète → `PreConfirmationCanceled` ;
+  * bouton d'aide → `CriticalAlertGenerated` (`CRITICAL`, `SENIOR_CONFIRMED`) ;
+  * délai expiré sans réponse ni relèvement → `PreConfirmationTimeoutExpired` puis `CriticalAlertGenerated` (`WARNING`, `NO_RESPONSE`). Si la personne était en train de se relever (activité vue, stabilité pas encore), la décision est reportée une seule fois, jusqu'à la fin du délai de la séquence ;
+  * après `WARNING` : bouton d'aide, ou 5 minutes sans relèvement → `CriticalAlertGenerated` (`CRITICAL`) ; relèvement → alerte close sans passage au niveau 3.
 
-* **`ActivityHistory` (structure de données)** : Map gardant en mémoire les derniers événements d'un `Senior` pour alimenter l'algorithme de corrélation.
-  * *Structure :* `Map<Date, RawSignal>` (clé : timestamp, valeur : signal).
+* **`ActivityHistory` (structure de données)** : Map gardant en mémoire les derniers événements d'un `Senior` pour alimenter l'algorithme de corrélation (utilisée pour l'inactivité, scénario B).
+  * *Structure :* `Map<number, RawSignal[]>` (clé : horodatage en millisecondes, valeur : signaux reçus à cet instant). Une clé de type `Date` ne convient pas : en JavaScript, deux `Date` identiques sont deux clés différentes (comparaison par référence).
 
 ### 4.6. Dépôts (Repositories)
 
 Interfaces permettant de sauvegarder et récupérer nos agrégats sans lier le code métier à la base de données PostgreSQL.
 
 * **`ActivityProfileRepository`** : `findBySeniorId(seniorId)`, `save(profile)`.
-* **`AlertRepository`** : `findActiveAlertsBySeniorId(seniorId)`, `save(alert)`.
+* **`AlertRepository`** : `findActiveAlertsBySeniorId(seniorId)`, `save(alert)`. Dans le service de détection, son implémentation garde les alertes actives **en mémoire** (pas de requête en base dans le chemin temps réel) ; l'historique durable des alertes est tenu à partir des événements publiés.
