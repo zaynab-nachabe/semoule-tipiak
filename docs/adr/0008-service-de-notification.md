@@ -25,7 +25,7 @@ Le DDD distingue le `Notification Context` (générique) du cœur de métier : l
 - La détection ignore l'existence de la notification : elle publie, la notification écoute (découplage par événements, visible dans l'architecture).
 - La notification n'a **pas accès aux données personnelles** : pas de base partagée entre contextes. La règle de consentement reste à un seul endroit (l'API).
 - Un canal externe (SMS, push) s'ajouterait dans ce seul service, sans toucher la détection ni l'API.
-- Limites, à reporter dans la matrice des risques :
+- Limites, reportées dans la matrice des risques (R10 à R12, et une limite de R6 : les notifications reçues avant une révocation restent lisibles) :
   - **remise dépendante de l'API** : si l'API est arrêtée, les notifications attendent dans sa session MQTT persistante ; si Mosquitto redémarre brutalement, elles peuvent être perdues (sauvegarde périodique, ADR 0002) ;
   - **pas d'accusé de lecture côté notification** : rien ne relance une notification `URGENT` restée non lue (pas d'escalade vers un autre destinataire) ;
   - **une personne sans relation consentie n'est pas prévenue** : un senior sans proche ni soignant consenti ne déclenche qu'une ligne de journal.
