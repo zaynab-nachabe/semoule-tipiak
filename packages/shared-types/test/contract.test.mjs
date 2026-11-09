@@ -219,9 +219,11 @@ function viaMqtt(topic, text) {
   const msg = adaptMqtt({ topic, payload });
   return msg ? normalise(msg) : null;
 }
-function viaHttp(body) {
-  return normalise(adaptHttp({ payload: body, res: {} }));
+// Comme le nœud « http in » : msg.req.path porte la route appelée.
+function viaHttp(body, route = '/ingest/watch') {
+  return normalise(adaptHttp({ payload: body, req: { path: route }, res: {} }));
 }
+const viaApp = (body) => viaHttp(body, '/ingest/app');
 const outcome = (result) => {
   if (!result) return { kind: 'dropped' };
   const [ok, ko] = result;
@@ -253,11 +255,17 @@ const cases = [
   ['montre : annulation avec identifiant', () => viaHttp({ sensorId: 'watch-001', event: 'CANCEL_ALERT', alertId: 'alert-123' }), 'signal', 'CANCEL_ALERT'],
   ['montre : annulation globale', () => viaHttp({ sensorId: 'watch-001', event: 'CANCEL_ALERT' }), 'signal', 'CANCEL_ALERT'],
   ['montre : heartbeat', () => viaHttp({ sensorId: 'watch-001', event: 'SENSOR_HEARTBEAT', battery: 84 }), 'signal', 'SENSOR_HEARTBEAT'],
+  ["application : « j'ai besoin d'aide »", () => viaApp({ sensorId: 'app-senior-001', event: 'HELP_BUTTON' }), 'signal', 'HELP_BUTTON'],
+  ['application : « tout va bien »', () => viaApp({ sensorId: 'app-senior-001', event: 'CANCEL_ALERT', alertId: 'alert-123' }), 'signal', 'CANCEL_ALERT'],
   ['montre : horodatage fourni', () => viaHttp({ sensorId: 'watch-001', event: 'HELP_BUTTON', timestamp: '2026-01-15T14:32:08.000Z' }), 'signal', 'HELP_BUTTON'],
 
   ['capteur inconnu', () => viaMqtt('zigbee2mqtt/pir-garage', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
   ['montre écrivant en MQTT', () => viaMqtt('zigbee2mqtt/watch-001', '{"occupancy":true}'), 'rejected', 'UNKNOWN_SENSOR'],
   ['PIR écrivant en HTTP', () => viaHttp({ sensorId: 'pir-cuisine', event: 'HELP_BUTTON' }), 'rejected', 'UNKNOWN_SENSOR'],
+  ["montre écrivant sur la route de l'application", () => viaApp({ sensorId: 'watch-001', event: 'HELP_BUTTON' }), 'rejected', 'UNKNOWN_SENSOR'],
+  ['application écrivant sur la route de la montre', () => viaHttp({ sensorId: 'app-senior-001', event: 'HELP_BUTTON' }), 'rejected', 'UNKNOWN_SENSOR'],
+  ['application : mesure refusée', () => viaApp({ sensorId: 'app-senior-001', event: 'HEART_RATE', value: 72 }), 'rejected', 'UNKNOWN_TYPE'],
+  ['application : annulation sans identifiant valide', () => viaApp({ sensorId: 'app-senior-001', event: 'CANCEL_ALERT', alertId: '' }), 'rejected', 'INVALID_PAYLOAD'],
   ['JSON invalide', () => viaMqtt('zigbee2mqtt/pir-cuisine', 'ceci n\'est pas du json'), 'rejected', 'INVALID_JSON'],
   ['message qui n\'est pas un objet', () => viaMqtt('zigbee2mqtt/pir-cuisine', '42'), 'rejected', 'INVALID_PAYLOAD'],
   ['PIR sans champ exploitable', () => viaMqtt('zigbee2mqtt/pir-cuisine', '{"linkquality":120}'), 'rejected', 'MISSING_FIELD'],
@@ -334,11 +342,11 @@ test('flow d\'ingestion : chaque bouton du simulateur produit le résultat annon
 });
 
 test('flow d\'ingestion : réponse HTTP 202 / 422, rien pour MQTT', () => {
-  const accepted = httpReply(normalise(adaptHttp({ payload: { sensorId: 'watch-001', event: 'HELP_BUTTON' }, res: {} }))[0]);
+  const accepted = httpReply(viaHttp({ sensorId: 'watch-001', event: 'HELP_BUTTON' })[0]);
   assert.equal(accepted.statusCode, 202);
   assert.equal(accepted.payload.accepted, true);
 
-  const refused = httpReply(normalise(adaptHttp({ payload: { event: 'HELP_BUTTON' }, res: {} }))[1]);
+  const refused = httpReply(viaHttp({ event: 'HELP_BUTTON' })[1]);
   assert.equal(refused.statusCode, 422);
   assert.equal(refused.payload.reason, 'MISSING_FIELD');
 

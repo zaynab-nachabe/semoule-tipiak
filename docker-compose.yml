@@ -1,5 +1,5 @@
 # Infrastructure et services du projet.
-# L'application web sera ajoutée avec les vues (senior, famille, médical).
+# Application web : http://localhost:8080 (vues senior, famille, médical).
 #
 # Lancement :  docker compose up --build
 # Arrêt      :  docker compose down
@@ -115,6 +115,7 @@ services:
       MQTT_URL: mqtt://mosquitto:1883
       MQTT_CLIENT_ID: api-gateway
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      NODE_RED_URL: http://node-red:1880   # actions du senior (« tout va bien », « aide »), ADR 0007
       PORT: 3000
     ports:
       - "3000:3000"
@@ -123,12 +124,29 @@ services:
         condition: service_healthy
       mosquitto:
         condition: service_healthy
+      node-red:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health > /dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 20s
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # --- Application web : une application, trois vues ; nginx relaie /api et /socket.io vers l'API ---
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: web
+    ports:
+      - "${WEB_PORT:-8080}:80"   # port hôte surchargeable (ex. si un autre service occupe déjà 8080)
+    depends_on:
+      api-gateway:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app-network

@@ -5,7 +5,8 @@ Passerelle d'entrée du système. Elle reçoit les messages bruts des capteurs, 
 ```
 capteurs Zigbee ─ Zigbee2MQTT ─ MQTT zigbee2mqtt/{sensorId} ─┐
                                                              ├─► Adapter ─► Normaliser ─┬─► signals/{seniorId}/{type}
-montre ─ appli compagnon ─ HTTP POST /ingest/watch ──────────┘                          └─► ingestion/rejected
+montre ─ appli compagnon ─ HTTP POST /ingest/watch ──────────┤                          └─► ingestion/rejected
+application web ─ API ─── HTTP POST /ingest/app ─────────────┘
 ```
 
 Fichiers :
@@ -88,6 +89,19 @@ Tous les messages portent `sensorId` (ex. `watch-001`) et peuvent porter `timest
 
 Réponse HTTP : **202** `{"accepted": true, "eventId": "…"}` si le signal est publié, **422** `{"accepted": false, "reason": "…", "details": "…"}` si le message est rejeté.
 
+### Application web (HTTP, `POST /ingest/app`)
+
+Les boutons « Tout va bien » et « J'ai besoin d'aide » de la vue senior arrivent ici, **transmis par l'API** après vérification des droits ([ADR 0007](../../docs/adr/0007-actions-application-via-ingestion.md)). L'application est une source d'entrée de plus : `sensorId` = `app-{seniorId}` (ex. `app-senior-001`), inscrite dans le registre. Même corps et même réponse que pour la montre, limités aux actions du senior :
+
+| `event` | Champs | Signal produit |
+|---|---|---|
+| `HELP_BUTTON` | — | `HELP_BUTTON` |
+| `CANCEL_ALERT` | `alertId` (optionnel) | `CANCEL_ALERT` |
+
+La détection reçoit donc exactement les mêmes signaux que pour les boutons de la montre ; seul le `sensorId` permet de savoir, dans l'historique, d'où venait l'action.
+
+> Cette route n'est pas authentifiée : elle doit rester interne au réseau Docker (seule l'API l'appelle). Sous Docker Compose, le port 1880 est publié pour l'éditeur, donc la route est aussi joignable depuis la machine hôte : c'est une limite connue de la démonstration.
+
 ## Rejets
 
 Un message qui ne peut pas être normalisé n'est jamais perdu en silence : il part sur `ingestion/rejected` avec le motif (format §7 de [format-evenements.md](../../docs/format-evenements.md)). Motifs produits :
@@ -97,12 +111,12 @@ Un message qui ne peut pas être normalisé n'est jamais perdu en silence : il p
 | `INVALID_JSON` | Le message MQTT n'est pas du JSON |
 | `INVALID_PAYLOAD` | Pas un objet, valeur hors limites, mauvais type de champ, horodatage invalide |
 | `MISSING_FIELD` | `sensorId`, `event`, ou le champ attendu du capteur est absent |
-| `UNKNOWN_TYPE` | `event` inconnu pour une montre |
-| `UNKNOWN_SENSOR` | `sensorId` absent du registre, ou capteur qui écrit sur le mauvais canal (une montre en MQTT, un PIR en HTTP) |
+| `UNKNOWN_TYPE` | `event` inconnu pour une montre, ou non autorisé pour l'application (ex. une mesure) |
+| `UNKNOWN_SENSOR` | `sensorId` absent du registre, ou capteur qui écrit sur le mauvais canal ou la mauvaise route (une montre en MQTT, un PIR en HTTP, l'application sur `/ingest/watch`) |
 
 ## Registre des capteurs
 
-Le lien `sensorId` → personne (`seniorId`), pièce, type et modèle de capteur est défini au démarrage du nœud **Normaliser** (onglet *On Start* du nœud, ou *Au démarrage* en français). Le `sensorId` est le `friendly_name` du capteur dans Zigbee2MQTT. Pour ajouter un capteur, ajouter une ligne dans ce registre. Dans une version ultérieure, ce registre viendra de PostgreSQL (profils et capteurs de chaque senior) plutôt que d'être écrit dans le flow.
+Le lien `sensorId` → personne (`seniorId`), pièce, type, modèle de capteur et, pour les sources HTTP, route attendue, est défini au démarrage du nœud **Normaliser** (onglet *On Start* du nœud, ou *Au démarrage* en français). Le `sensorId` est le `friendly_name` du capteur dans Zigbee2MQTT. Pour ajouter un capteur, ajouter une ligne dans ce registre. Dans une version ultérieure, ce registre viendra de PostgreSQL (profils et capteurs de chaque senior) plutôt que d'être écrit dans le flow.
 
 ## Tests automatiques
 

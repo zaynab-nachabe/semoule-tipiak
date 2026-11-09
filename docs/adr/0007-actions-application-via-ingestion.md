@@ -1,6 +1,6 @@
 # 0007. Les actions de l'application passent par l'ingestion, comme des signaux
 
-- Statut : acceptée (implémentation avec l'application web)
+- Statut : acceptée (implémentée avec l'application web, ADR 0009)
 - Date : 2026-11-10
 
 ## Contexte
@@ -12,7 +12,8 @@ La vue senior propose « Tout va bien » (annuler une levée de doute) et « J'a
 **Application → API → Node-RED → `signals/{seniorId}/{type}` → détection.**
 
 - L'API vérifie que l'appelant est bien ce senior (rôle et relation, comme pour toute requête), puis transmet l'action à Node-RED par HTTP.
-- Node-RED la normalise en signal `CANCEL_ALERT` ou `HELP_BUTTON`, exactement comme un appui sur le bouton de la montre. L'application est une **source d'entrée de plus**, enregistrée dans le registre des capteurs.
+  Mise en œuvre : `POST /seniors/{seniorId}/alerts/{alertId}/cancel` et `POST /seniors/{seniorId}/help` (réponse `202`), puis l'API appelle `POST /ingest/app` de Node-RED avec la source `app-{seniorId}`. Node-RED injoignable → `503`.
+- Node-RED la normalise en signal `CANCEL_ALERT` ou `HELP_BUTTON`, exactement comme un appui sur le bouton de la montre. L'application est une **source d'entrée de plus**, enregistrée dans le registre des capteurs. Une route HTTP dédiée (`/ingest/app`) la distingue de la montre dans l'historique ; le registre impose à chaque source sa route.
 - La détection ne fait aucune différence entre la montre et l'application.
 
 ## Conséquences

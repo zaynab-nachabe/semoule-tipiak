@@ -41,9 +41,9 @@ Garder cette convention a deux avantages :
 
 Zigbee2MQTT publie aussi ses propres messages sous `zigbee2mqtt/bridge/...` et, si l'option *availability* est activée, l'état de connexion de chaque capteur sous `zigbee2mqtt/{sensorId}/availability`. Ces topics ont un niveau de plus et ne sont donc pas reçus par l'abonnement `zigbee2mqtt/+`.
 
-### Entrée HTTP (montre)
+### Entrées HTTP (montre, application web)
 
-La montre ne passe pas par MQTT : l'appli compagnon envoie ses données en `POST http://<node-red>:1880/ingest/watch`. Node-RED les normalise et les publie sur `signals/...` comme les autres. Les formats bruts acceptés (capteurs fixes et montre) sont décrits dans [services/ingestion/README.md](../services/ingestion/README.md).
+La montre ne passe pas par MQTT : l'appli compagnon envoie ses données en `POST http://<node-red>:1880/ingest/watch`. Node-RED les normalise et les publie sur `signals/...` comme les autres. Les boutons de la vue senior de l'application web suivent le même chemin : l'API les transmet en `POST http://node-red:1880/ingest/app` (source `app-{seniorId}`, [ADR 0007](adr/0007-actions-application-via-ingestion.md)). Les formats bruts acceptés (capteurs fixes et montre) sont décrits dans [services/ingestion/README.md](../services/ingestion/README.md).
 
 ---
 

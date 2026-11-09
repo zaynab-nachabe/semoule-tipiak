@@ -13,6 +13,7 @@ const { io } = require('socket.io-client');
 
 const API = process.env.API_URL ?? 'http://localhost:3000';
 const NODE_RED = process.env.NODE_RED_URL ?? 'http://localhost:1880';
+const WEB = process.env.WEB_URL ?? 'http://localhost:8080';
 const SENIOR = 'senior-001';
 const PRE_S = Number(process.env.PRE_CONFIRMATION_DELAY_S || 60);
 const CRIT_S = Number(process.env.CRITICAL_ESCALATION_DELAY_S || 300);
@@ -193,6 +194,71 @@ await step('clôture après intervention : médical uniquement, la famille la vo
   const again = await api(`/seniors/${SENIOR}/alerts/${alertId}/close`, { method: 'POST', token: tokens.MEDICAL });
   assert.equal(again.status, 409);
   assert.equal(again.body.error.code, 'CONFLICT');
+});
+
+// --- Actions du senior dans l'application : application -> API -> Node-RED -> signal (ADR 0007) ---
+
+let canceledId;
+await step('« tout va bien » dans l\'application : l\'API transmet, la levée de doute est annulée, la famille n\'est pas sollicitée', async () => {
+  const before = inbox.SENIOR.filter((m) => m.type === 'preconfirmation.requested').length;
+  const res = await fetch(`${NODE_RED}/ingest/watch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sensorId: 'watch-001', event: 'FALL_IMPACT', value: 7.5 }),
+  });
+  assert.equal(res.status, 202);
+  await waitUntil(() => inbox.SENIOR.filter((m) => m.type === 'preconfirmation.requested').length > before, 10_000, 'nouvelle pré-confirmation');
+  canceledId = inbox.SENIOR.filter((m) => m.type === 'preconfirmation.requested').at(-1).message.alertId;
+  await waitUntil(() => inbox.SENIOR.some((m) => m.type === 'alert.created' && m.message.alertId === canceledId), 5_000, 'alerte au journal');
+
+  const path = `/seniors/${SENIOR}/alerts/${canceledId}/cancel`;
+  assert.equal((await api(path, { method: 'POST', token: tokens.FAMILY })).status, 403, 'seul le senior annule');
+  const { status, body } = await api(path, { method: 'POST', token: tokens.SENIOR });
+  assert.equal(status, 202);
+  assert.ok(body.eventId, 'eventId du signal CANCEL_ALERT produit par Node-RED');
+  await waitUntil(
+    () => inbox.SENIOR.some((m) => m.type === 'alert.updated' && m.message.alertId === canceledId && m.message.status === 'RESOLVED'),
+    5_000,
+    'annulation visible',
+  );
+  const done = (await api(`/seniors/${SENIOR}/alerts/${canceledId}`, { token: tokens.MEDICAL })).body;
+  assert.equal(done.cancellationCause, 'SENIOR_CANCELED');
+  assert.ok(!inbox.FAMILY.some((m) => m.message.alertId === canceledId), 'la famille ne reçoit rien d\'une levée de doute annulée');
+  const again = await api(path, { method: 'POST', token: tokens.SENIOR });
+  assert.equal(again.status, 409, 'une alerte terminée ne s\'annule plus');
+});
+
+await step('« j\'ai besoin d\'aide » dans l\'application : alerte de niveau 3 et notifications urgentes', async () => {
+  assert.equal((await api(`/seniors/${SENIOR}/help`, { method: 'POST', token: tokens.MEDICAL })).status, 403, 'seul le senior demande de l\'aide');
+  const { status, body } = await api(`/seniors/${SENIOR}/help`, { method: 'POST', token: tokens.SENIOR });
+  assert.equal(status, 202);
+  assert.ok(body.eventId);
+  await waitUntil(
+    () => inbox.FAMILY.some((m) => m.type === 'notification.created' && m.message.reason === 'HELP_REQUESTED' && m.message.priority === 'URGENT'),
+    10_000,
+    'notification d\'aide',
+  );
+  const helpAlertId = inbox.FAMILY.find((m) => m.type === 'notification.created' && m.message.reason === 'HELP_REQUESTED').message.alertId;
+  const signals = (await api(`/seniors/${SENIOR}/alerts/${helpAlertId}`, { token: tokens.MEDICAL })).body;
+  assert.equal(signals.severity, 'CRITICAL');
+  assert.equal(signals.escalationCause, 'IMMEDIATE');
+  // Remise à zéro pour la suite : le médical clôture la demande d'aide.
+  assert.equal((await api(`/seniors/${SENIOR}/alerts/${helpAlertId}/close`, { method: 'POST', token: tokens.MEDICAL })).status, 200);
+});
+
+await step('application web : servie par nginx, qui relaie /api et /socket.io vers l\'API', async () => {
+  const page = await fetch(`${WEB}/`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /<div id="root">/);
+  const health = await fetch(`${WEB}/api/health`);
+  assert.equal(health.status, 200);
+  const socket = io(WEB, { auth: { token: tokens.FAMILY }, transports: ['websocket'] });
+  sockets.push(socket);
+  await new Promise((resolve, reject) => {
+    socket.once('ready', resolve);
+    socket.once('connect_error', reject);
+    setTimeout(() => reject(new Error('pas de « ready » via nginx')), 10_000);
+  });
 });
 
 for (const socket of sockets) socket.close();

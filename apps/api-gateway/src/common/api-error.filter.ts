@@ -10,6 +10,7 @@ const CODES: Record<number, string> = {
   403: 'FORBIDDEN',
   404: 'NOT_FOUND',
   409: 'CONFLICT',
+  503: 'SERVICE_UNAVAILABLE',
 };
 
 @Catch()

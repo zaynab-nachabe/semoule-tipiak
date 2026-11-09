@@ -4,7 +4,7 @@
         "type": "tab",
         "label": "Ingestion",
         "disabled": false,
-        "info": "Capteurs (MQTT) et montre (HTTP) -> signaux normalisés (docs/format-evenements.md)."
+        "info": "Capteurs (MQTT), montre et application web (HTTP) -> signaux normalisés (docs/format-evenements.md)."
     },
     {
         "id": "tab_sim",
@@ -48,7 +48,7 @@
         "id": "cmt_ingestion",
         "type": "comment",
         "z": "tab_ingestion",
-        "name": "Ingestion : MQTT (capteurs fixes) + HTTP (montre) -> signals/{seniorId}/{type}",
+        "name": "Ingestion : MQTT (capteurs fixes) + HTTP (montre, application) -> signals/{seniorId}/{type}",
         "info": "Voir services/ingestion/README.md pour les formats bruts acceptés.",
         "x": 330,
         "y": 40,
@@ -93,6 +93,23 @@
         ]
     },
     {
+        "id": "http_app",
+        "type": "http in",
+        "z": "tab_ingestion",
+        "name": "POST /ingest/app",
+        "url": "/ingest/app",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 140,
+        "y": 280,
+        "wires": [
+            [
+                "adapt_http"
+            ]
+        ]
+    },
+    {
         "id": "adapt_mqtt",
         "type": "function",
         "z": "tab_ingestion",
@@ -117,7 +134,7 @@
         "type": "function",
         "z": "tab_ingestion",
         "name": "Adapter HTTP",
-        "func": "// Entrée HTTP brute (appli compagnon de la montre) -> enveloppe commune\nconst body = msg.payload;\nconst isObject = body !== null && typeof body === 'object' && !Array.isArray(body);\nconst text = JSON.stringify(body);\n\nmsg.raw = {\n    source: { protocol: 'HTTP', origin: 'POST /ingest/watch' },\n    sensorId: isObject ? body.sensorId : undefined,\n    body: body,\n    rawText: text === undefined ? '' : text\n};\nreturn msg;",
+        "func": "// Entrée HTTP brute -> enveloppe commune. Deux routes arrivent ici :\n//   POST /ingest/watch : appli compagnon de la montre\n//   POST /ingest/app   : actions du senior dans l'application web, transmises par l'API (ADR 0007)\nconst body = msg.payload;\nconst isObject = body !== null && typeof body === 'object' && !Array.isArray(body);\nconst text = JSON.stringify(body);\nconst route = msg.req && typeof msg.req.path === 'string' ? msg.req.path : '?';\n\nmsg.raw = {\n    source: { protocol: 'HTTP', origin: 'POST ' + route },\n    sensorId: isObject ? body.sensorId : undefined,\n    body: body,\n    rawText: text === undefined ? '' : text\n};\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -137,11 +154,11 @@
         "type": "function",
         "z": "tab_ingestion",
         "name": "Normaliser",
-        "func": "// Normalisation : entrée brute -> signal conforme à docs/format-evenements.md (§1 à §3)\n// Sortie 1 : signal valide, publié sur signals/{seniorId}/{type}\n// Sortie 2 : message rejeté, publié sur ingestion/rejected (§7)\n// Aucune sortie : message sans intérêt métier (ex. fin de détection d'un PIR)\nconst ISO_UTC = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$/;\nconst WATCH_EVENTS = ['HEART_RATE', 'FALL_IMPACT', 'HELP_BUTTON', 'CANCEL_ALERT', 'SENSOR_HEARTBEAT'];\nconst isNum = (v) => typeof v === 'number' && Number.isFinite(v);\n\nfunction uuid() {\n    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n        const r = Math.floor(Math.random() * 16);\n        return (c === 'x' ? r : (r & 3) | 8).toString(16);\n    });\n}\n\nconst raw = msg.raw;\nconst sensorId = raw.sensorId;\nconst body = raw.body;\n\nfunction reject(reason, details) {\n    msg.topic = 'ingestion/rejected';\n    msg.qos = 1;\n    msg.retain = false;\n    msg.payload = {\n        eventId: uuid(),\n        timestamp: new Date().toISOString(),\n        source: raw.source,\n        reason: reason,\n        details: details,\n        originalMessage: raw.rawText\n    };\n    delete msg.raw;\n    return [null, msg];\n}\n\nif (sensorId === undefined || sensorId === null || sensorId === '') {\n    return reject('MISSING_FIELD', 'sensorId manquant');\n}\nif (typeof body === 'string') {\n    return reject('INVALID_JSON', 'le message n\\'est pas du JSON valide');\n}\nif (body === null || typeof body !== 'object' || Array.isArray(body)) {\n    return reject('INVALID_PAYLOAD', 'le message doit être un objet JSON');\n}\n\nconst registry = global.get('sensorRegistry') || {};\nconst sensor = Object.prototype.hasOwnProperty.call(registry, sensorId) ? registry[sensorId] : undefined;\nif (!sensor) {\n    return reject('UNKNOWN_SENSOR', 'capteur \\'' + sensorId + '\\' absent du registre');\n}\nif (sensor.channel !== raw.source.protocol) {\n    return reject('UNKNOWN_SENSOR', 'le capteur \\'' + sensorId + '\\' doit écrire en ' + sensor.channel + ', pas en ' + raw.source.protocol);\n}\n\nlet timestamp = new Date().toISOString();\nif (body.timestamp !== undefined) {\n    if (typeof body.timestamp !== 'string' || !ISO_UTC.test(body.timestamp)) {\n        return reject('INVALID_PAYLOAD', 'timestamp doit être une date ISO 8601 en UTC (suffixe Z)');\n    }\n    timestamp = body.timestamp;\n}\n\nfunction accept(type, payload) {\n    msg.topic = 'signals/' + sensor.seniorId + '/' + type;\n    msg.qos = 1;\n    msg.retain = false;\n    msg.payload = {\n        eventId: uuid(),\n        seniorId: sensor.seniorId,\n        sensorId: sensorId,\n        type: type,\n        timestamp: timestamp,\n        payload: payload\n    };\n    delete msg.raw;\n    return [msg, null];\n}\n\nfunction heartbeat() {\n    if (!isNum(body.battery) || body.battery < 0 || body.battery > 100) {\n        return reject('INVALID_PAYLOAD', 'battery doit être un nombre entre 0 et 100');\n    }\n    return accept('SENSOR_HEARTBEAT', { value: body.battery, unit: '%' });\n}\n\n// Zigbee2MQTT (option cache_state, activée par défaut) republie l'état COMPLET du capteur à chaque\n// message : un rapport de batterie contient aussi la dernière valeur d'occupancy. Les champs propres\n// au matériel (illuminance, voltage, linkquality, device_temperature…) sont ignorés.\n\nif (sensor.kind === 'PIR') {\n    // Aqara RTCGQ11LM : occupancy=true à chaque détection, puis false après occupancy_timeout (90 s).\n    if ('occupancy' in body && typeof body.occupancy !== 'boolean') {\n        return reject('INVALID_PAYLOAD', 'occupancy doit être un booléen');\n    }\n    if (body.occupancy === true) {\n        return accept('PIR_MOTION', { room: sensor.room });\n    }\n    // Fin de détection ou rapport périodique : seul l'état de la batterie apporte une information.\n    if ('battery' in body) { return heartbeat(); }\n    if ('occupancy' in body) { return null; }\n    return reject('MISSING_FIELD', 'occupancy ou battery attendu');\n}\n\nif (sensor.kind === 'PRESSURE_PLATE') {\n    // Tuya TS0601_bed_presence_sensor : occupancy=true tant que quelqu'un est sur la bande de pression.\n    // C'est un capteur d'ÉTAT : on ne publie PRESSURE_PLATE que lorsque l'état change, sinon un rapport\n    // périodique répéterait « PRESSED » et fausserait le calcul du temps passé au lit.\n    if ('occupancy' in body) {\n        if (typeof body.occupancy !== 'boolean') {\n            return reject('INVALID_PAYLOAD', 'occupancy doit être un booléen');\n        }\n        const state = body.occupancy ? 'PRESSED' : 'RELEASED';\n        const key = 'plateState:' + sensorId;\n        const previous = flow.get(key);\n        flow.set(key, state);\n        if (state !== previous) {\n            return accept('PRESSURE_PLATE', { room: sensor.room, location: sensor.location, state: state });\n        }\n    }\n    if ('battery' in body) { return heartbeat(); }\n    if ('occupancy' in body) { return null; }\n    return reject('MISSING_FIELD', 'occupancy ou battery attendu');\n}\n\nif (sensor.kind === 'WATCH') {\n    const event = body.event;\n    if (event === undefined) { return reject('MISSING_FIELD', 'event manquant'); }\n    if (!WATCH_EVENTS.includes(event)) {\n        return reject('UNKNOWN_TYPE', 'event \\'' + event + '\\' non géré pour une montre');\n    }\n    switch (event) {\n        case 'HEART_RATE':\n            if (!isNum(body.value) || body.value < 0 || body.value > 300) {\n                return reject('INVALID_PAYLOAD', 'value doit être un nombre entre 0 et 300');\n            }\n            return accept('HEART_RATE', { value: body.value, unit: 'bpm' });\n        case 'FALL_IMPACT':\n            if (!isNum(body.value) || body.value < 0) {\n                return reject('INVALID_PAYLOAD', 'value doit être un nombre positif');\n            }\n            return accept('FALL_IMPACT', { value: body.value, unit: 'g' });\n        case 'HELP_BUTTON':\n            return accept('HELP_BUTTON', {});\n        case 'CANCEL_ALERT':\n            if (body.alertId === undefined) { return accept('CANCEL_ALERT', {}); }\n            if (typeof body.alertId !== 'string' || body.alertId === '') {\n                return reject('INVALID_PAYLOAD', 'alertId doit être une chaîne non vide');\n            }\n            return accept('CANCEL_ALERT', { alertId: body.alertId });\n        default:\n            if (body.battery === undefined) { return reject('MISSING_FIELD', 'battery manquant'); }\n            return heartbeat();\n    }\n}\n\nreturn reject('UNKNOWN_SENSOR', 'type de capteur \\'' + sensor.kind + '\\' non géré');",
+        "func": "// Normalisation : entrée brute -> signal conforme à docs/format-evenements.md (§1 à §3)\n// Sortie 1 : signal valide, publié sur signals/{seniorId}/{type}\n// Sortie 2 : message rejeté, publié sur ingestion/rejected (§7)\n// Aucune sortie : message sans intérêt métier (ex. fin de détection d'un PIR)\nconst ISO_UTC = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$/;\nconst WATCH_EVENTS = ['HEART_RATE', 'FALL_IMPACT', 'HELP_BUTTON', 'CANCEL_ALERT', 'SENSOR_HEARTBEAT'];\nconst APP_EVENTS = ['HELP_BUTTON', 'CANCEL_ALERT'];\nconst isNum = (v) => typeof v === 'number' && Number.isFinite(v);\n\nfunction uuid() {\n    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n        const r = Math.floor(Math.random() * 16);\n        return (c === 'x' ? r : (r & 3) | 8).toString(16);\n    });\n}\n\nconst raw = msg.raw;\nconst sensorId = raw.sensorId;\nconst body = raw.body;\n\nfunction reject(reason, details) {\n    msg.topic = 'ingestion/rejected';\n    msg.qos = 1;\n    msg.retain = false;\n    msg.payload = {\n        eventId: uuid(),\n        timestamp: new Date().toISOString(),\n        source: raw.source,\n        reason: reason,\n        details: details,\n        originalMessage: raw.rawText\n    };\n    delete msg.raw;\n    return [null, msg];\n}\n\nif (sensorId === undefined || sensorId === null || sensorId === '') {\n    return reject('MISSING_FIELD', 'sensorId manquant');\n}\nif (typeof body === 'string') {\n    return reject('INVALID_JSON', 'le message n\\'est pas du JSON valide');\n}\nif (body === null || typeof body !== 'object' || Array.isArray(body)) {\n    return reject('INVALID_PAYLOAD', 'le message doit être un objet JSON');\n}\n\nconst registry = global.get('sensorRegistry') || {};\nconst sensor = Object.prototype.hasOwnProperty.call(registry, sensorId) ? registry[sensorId] : undefined;\nif (!sensor) {\n    return reject('UNKNOWN_SENSOR', 'capteur \\'' + sensorId + '\\' absent du registre');\n}\nif (sensor.channel !== raw.source.protocol) {\n    return reject('UNKNOWN_SENSOR', 'le capteur \\'' + sensorId + '\\' doit écrire en ' + sensor.channel + ', pas en ' + raw.source.protocol);\n}\nif (sensor.route && sensor.route !== raw.source.origin) {\n    return reject('UNKNOWN_SENSOR', 'le capteur \\'' + sensorId + '\\' doit écrire sur ' + sensor.route + ', pas sur ' + raw.source.origin);\n}\n\nlet timestamp = new Date().toISOString();\nif (body.timestamp !== undefined) {\n    if (typeof body.timestamp !== 'string' || !ISO_UTC.test(body.timestamp)) {\n        return reject('INVALID_PAYLOAD', 'timestamp doit être une date ISO 8601 en UTC (suffixe Z)');\n    }\n    timestamp = body.timestamp;\n}\n\nfunction accept(type, payload) {\n    msg.topic = 'signals/' + sensor.seniorId + '/' + type;\n    msg.qos = 1;\n    msg.retain = false;\n    msg.payload = {\n        eventId: uuid(),\n        seniorId: sensor.seniorId,\n        sensorId: sensorId,\n        type: type,\n        timestamp: timestamp,\n        payload: payload\n    };\n    delete msg.raw;\n    return [msg, null];\n}\n\n// Annulation « tout va bien », commune à la montre et à l'application.\nfunction cancel() {\n    if (body.alertId === undefined) { return accept('CANCEL_ALERT', {}); }\n    if (typeof body.alertId !== 'string' || body.alertId === '') {\n        return reject('INVALID_PAYLOAD', 'alertId doit être une chaîne non vide');\n    }\n    return accept('CANCEL_ALERT', { alertId: body.alertId });\n}\n\nfunction heartbeat() {\n    if (!isNum(body.battery) || body.battery < 0 || body.battery > 100) {\n        return reject('INVALID_PAYLOAD', 'battery doit être un nombre entre 0 et 100');\n    }\n    return accept('SENSOR_HEARTBEAT', { value: body.battery, unit: '%' });\n}\n\n// Zigbee2MQTT (option cache_state, activée par défaut) republie l'état COMPLET du capteur à chaque\n// message : un rapport de batterie contient aussi la dernière valeur d'occupancy. Les champs propres\n// au matériel (illuminance, voltage, linkquality, device_temperature…) sont ignorés.\n\nif (sensor.kind === 'PIR') {\n    // Aqara RTCGQ11LM : occupancy=true à chaque détection, puis false après occupancy_timeout (90 s).\n    if ('occupancy' in body && typeof body.occupancy !== 'boolean') {\n        return reject('INVALID_PAYLOAD', 'occupancy doit être un booléen');\n    }\n    if (body.occupancy === true) {\n        return accept('PIR_MOTION', { room: sensor.room });\n    }\n    // Fin de détection ou rapport périodique : seul l'état de la batterie apporte une information.\n    if ('battery' in body) { return heartbeat(); }\n    if ('occupancy' in body) { return null; }\n    return reject('MISSING_FIELD', 'occupancy ou battery attendu');\n}\n\nif (sensor.kind === 'PRESSURE_PLATE') {\n    // Tuya TS0601_bed_presence_sensor : occupancy=true tant que quelqu'un est sur la bande de pression.\n    // C'est un capteur d'ÉTAT : on ne publie PRESSURE_PLATE que lorsque l'état change, sinon un rapport\n    // périodique répéterait « PRESSED » et fausserait le calcul du temps passé au lit.\n    if ('occupancy' in body) {\n        if (typeof body.occupancy !== 'boolean') {\n            return reject('INVALID_PAYLOAD', 'occupancy doit être un booléen');\n        }\n        const state = body.occupancy ? 'PRESSED' : 'RELEASED';\n        const key = 'plateState:' + sensorId;\n        const previous = flow.get(key);\n        flow.set(key, state);\n        if (state !== previous) {\n            return accept('PRESSURE_PLATE', { room: sensor.room, location: sensor.location, state: state });\n        }\n    }\n    if ('battery' in body) { return heartbeat(); }\n    if ('occupancy' in body) { return null; }\n    return reject('MISSING_FIELD', 'occupancy ou battery attendu');\n}\n\nif (sensor.kind === 'WATCH') {\n    const event = body.event;\n    if (event === undefined) { return reject('MISSING_FIELD', 'event manquant'); }\n    if (!WATCH_EVENTS.includes(event)) {\n        return reject('UNKNOWN_TYPE', 'event \\'' + event + '\\' non géré pour une montre');\n    }\n    switch (event) {\n        case 'HEART_RATE':\n            if (!isNum(body.value) || body.value < 0 || body.value > 300) {\n                return reject('INVALID_PAYLOAD', 'value doit être un nombre entre 0 et 300');\n            }\n            return accept('HEART_RATE', { value: body.value, unit: 'bpm' });\n        case 'FALL_IMPACT':\n            if (!isNum(body.value) || body.value < 0) {\n                return reject('INVALID_PAYLOAD', 'value doit être un nombre positif');\n            }\n            return accept('FALL_IMPACT', { value: body.value, unit: 'g' });\n        case 'HELP_BUTTON':\n            return accept('HELP_BUTTON', {});\n        case 'CANCEL_ALERT':\n            return cancel();\n        default:\n            if (body.battery === undefined) { return reject('MISSING_FIELD', 'battery manquant'); }\n            return heartbeat();\n    }\n}\n\nif (sensor.kind === 'APP') {\n    // Application web : seulement les actions du senior, comme les boutons de la montre (ADR 0007).\n    const event = body.event;\n    if (event === undefined) { return reject('MISSING_FIELD', 'event manquant'); }\n    if (!APP_EVENTS.includes(event)) {\n        return reject('UNKNOWN_TYPE', 'event \\'' + event + '\\' non géré pour l\\'application');\n    }\n    return event === 'HELP_BUTTON' ? accept('HELP_BUTTON', {}) : cancel();\n}\n\nreturn reject('UNKNOWN_SENSOR', 'type de capteur \\'' + sensor.kind + '\\' non géré');",
         "outputs": 2,
         "timeout": 0,
         "noerr": 0,
-        "initialize": "// Registre des capteurs connus : sensorId -> senior, type de capteur, canal d'arrivée, modèle réel.\n// sensorId = friendly_name du capteur dans Zigbee2MQTT. Un capteur absent de cette liste est rejeté (UNKNOWN_SENSOR).\nglobal.set('sensorRegistry', {\n    'pir-cuisine':    { seniorId: 'senior-001', channel: 'MQTT', kind: 'PIR', model: 'Aqara RTCGQ11LM', room: 'cuisine' },\n    'pir-salon':      { seniorId: 'senior-001', channel: 'MQTT', kind: 'PIR', model: 'Aqara RTCGQ11LM', room: 'salon' },\n    'pir-chambre':    { seniorId: 'senior-001', channel: 'MQTT', kind: 'PIR', model: 'Aqara RTCGQ11LM', room: 'chambre' },\n    'plate-lit':      { seniorId: 'senior-001', channel: 'MQTT', kind: 'PRESSURE_PLATE', model: 'Tuya TS0601_bed_presence_sensor', room: 'chambre', location: 'lit' },\n    'plate-fauteuil': { seniorId: 'senior-001', channel: 'MQTT', kind: 'PRESSURE_PLATE', model: 'Tuya TS0601_bed_presence_sensor', room: 'salon', location: 'fauteuil' },\n    'watch-001':      { seniorId: 'senior-001', channel: 'HTTP', kind: 'WATCH' }\n});",
+        "initialize": "// Registre des capteurs connus : sensorId -> senior, type de capteur, canal d'arrivée (et route HTTP), modèle réel.\n// sensorId = friendly_name du capteur dans Zigbee2MQTT. Un capteur absent de cette liste est rejeté (UNKNOWN_SENSOR).\nglobal.set('sensorRegistry', {\n    'pir-cuisine':    { seniorId: 'senior-001', channel: 'MQTT', kind: 'PIR', model: 'Aqara RTCGQ11LM', room: 'cuisine' },\n    'pir-salon':      { seniorId: 'senior-001', channel: 'MQTT', kind: 'PIR', model: 'Aqara RTCGQ11LM', room: 'salon' },\n    'pir-chambre':    { seniorId: 'senior-001', channel: 'MQTT', kind: 'PIR', model: 'Aqara RTCGQ11LM', room: 'chambre' },\n    'plate-lit':      { seniorId: 'senior-001', channel: 'MQTT', kind: 'PRESSURE_PLATE', model: 'Tuya TS0601_bed_presence_sensor', room: 'chambre', location: 'lit' },\n    'plate-fauteuil': { seniorId: 'senior-001', channel: 'MQTT', kind: 'PRESSURE_PLATE', model: 'Tuya TS0601_bed_presence_sensor', room: 'salon', location: 'fauteuil' },\n    'watch-001':      { seniorId: 'senior-001', channel: 'HTTP', route: 'POST /ingest/watch', kind: 'WATCH' },\n    // Application web du senior (« tout va bien », « j'ai besoin d'aide ») : une source d'entrée de plus (ADR 0007).\n    'app-senior-001': { seniorId: 'senior-001', channel: 'HTTP', route: 'POST /ingest/app', kind: 'APP' }\n});",
         "finalize": "",
         "libs": [],
         "x": 570,
@@ -162,7 +179,7 @@
         "type": "function",
         "z": "tab_ingestion",
         "name": "Réponse HTTP",
-        "func": "// Répond à l'appelant HTTP (appli de la montre). Ignore les messages venus de MQTT.\nif (!msg.res) { return null; }\n\nconst rejected = msg.topic === 'ingestion/rejected';\nmsg.statusCode = rejected ? 422 : 202;\nmsg.payload = rejected\n    ? { accepted: false, reason: msg.payload.reason, details: msg.payload.details }\n    : { accepted: true, eventId: msg.payload.eventId };\nreturn msg;",
+        "func": "// Répond à l'appelant HTTP (appli de la montre, ou API pour l'application). Ignore les messages venus de MQTT.\nif (!msg.res) { return null; }\n\nconst rejected = msg.topic === 'ingestion/rejected';\nmsg.statusCode = rejected ? 422 : 202;\nmsg.payload = rejected\n    ? { accepted: false, reason: msg.payload.reason, details: msg.payload.details }\n    : { accepted: true, eventId: msg.payload.eventId };\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -717,6 +734,35 @@
         ]
     },
     {
+        "id": "sim_app_help",
+        "type": "inject",
+        "z": "tab_sim",
+        "name": "Application : « J'ai besoin d'aide »",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"sensorId\":\"app-senior-001\",\"event\":\"HELP_BUTTON\"}",
+        "payloadType": "json",
+        "x": 190,
+        "y": 960,
+        "wires": [
+            [
+                "sim_http_app"
+            ]
+        ]
+    },
+    {
         "id": "sim_http_req",
         "type": "http request",
         "z": "tab_sim",
@@ -734,6 +780,30 @@
         "headers": [],
         "x": 540,
         "y": 740,
+        "wires": [
+            [
+                "dbg_http"
+            ]
+        ]
+    },
+    {
+        "id": "sim_http_app",
+        "type": "http request",
+        "z": "tab_sim",
+        "name": "POST /ingest/app",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://localhost:1880/ingest/app",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 540,
+        "y": 960,
         "wires": [
             [
                 "dbg_http"
