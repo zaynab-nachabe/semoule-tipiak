@@ -2,13 +2,14 @@
 
 Ce document définit le **contrat de données** entre la passerelle d'ingestion (Node-RED) et le reste du système (détection, stockage). Tout signal entrant, quel que soit le capteur et son protocole d'origine (MQTT ou HTTP), est normalisé par Node-RED vers ce format unique avant d'être transmis.
 
-Il couvre trois familles de messages :
+Il couvre quatre familles de messages :
 
 | Famille | Produit par | Consommé par | Section |
 |---|---|---|---|
 | **Signaux normalisés** (`RawSignal`) | Ingestion (Node-RED) | Détection, historisation | §1 à §5 |
 | **Événements de domaine** (pré-confirmation, alerte critique) | Détection | Notification, API, appli senior | §6 |
 | **Messages rejetés** (file de rejet / DLQ) | Ingestion | Supervision, débogage | §7 |
+| **Notifications** (`NotificationRequested`) | Notification | API (remise aux personnes) | §9 |
 
 Les topics MQTT sur lesquels circulent ces messages sont définis dans [topics-mqtt.md](topics-mqtt.md). Les versions lisibles par machine (JSON Schema + types TypeScript) sont décrites au §8.
 
@@ -409,8 +410,57 @@ Ce document est la référence lisible. Ses équivalents exécutables sont dans 
 | `schemas/raw-signal.schema.json` | JSON Schema (draft-07) d'un signal normalisé (§1 à §3) | Node-RED, validation avant publication |
 | `schemas/domain-event.schema.json` | JSON Schema des événements de domaine (§6) | Tests, débogage |
 | `schemas/rejected-message.schema.json` | JSON Schema d'un message rejeté (§7) | Tests, débogage |
+| `schemas/notification.schema.json` | JSON Schema d'une notification (§9) | API, à la réception |
 | `src/*.ts` | Types TypeScript et constantes (enums, noms de topics) | Services TypeScript (détection, notification, API) |
 
 Les schémas n'utilisent pas le mot-clé `format` (remplacé par des `pattern`) pour fonctionner avec n'importe quel validateur sans extension.
 
 > Toute modification du contrat se fait **aux trois endroits** : ce document, les JSON Schemas et les types TypeScript.
+
+---
+
+## 9. Notifications (émises par le service de notification)
+
+Le service de notification écoute les alertes avérées (`CriticalAlertGenerated`) et décide **qui doit être prévenu, avec quelle priorité** ([ADR 0008](adr/0008-service-de-notification.md)). Il raisonne par **rôle** : il publie une notification par rôle destinataire sur `notifications/{seniorId}`, et l'API la remet aux personnes de ce rôle qui ont une relation consentie avec le senior. Le service de notification n'a donc pas accès aux données personnelles.
+
+### Règle de routage
+
+| Gravité de l'alerte | Famille | Équipe médicale |
+|---|---|---|
+| `WARNING` (niveau 2) | `NORMAL` : à traiter | `INFO` : pour trace |
+| `CRITICAL` (niveau 3) | `URGENT` | `URGENT` |
+
+Une alerte qui passe du niveau 2 au niveau 3 produit donc deux séries de notifications. Le senior ne reçoit pas de notification : il est sollicité par la levée de doute (bandeau « Tout va bien ? »).
+
+### `NotificationRequested`
+
+```json
+{
+  "eventId": "d4e5f6a7-0001-4000-8000-000000000301",
+  "seniorId": "senior-001",
+  "type": "NotificationRequested",
+  "timestamp": "2026-01-15T14:33:09.000Z",
+  "payload": {
+    "alertId": "alert-123",
+    "recipientRole": "FAMILY",
+    "priority": "NORMAL",
+    "severity": "WARNING",
+    "reason": "FALL_DETECTED",
+    "escalationCause": "NO_RESPONSE",
+    "title": "Chute détectée, sans réponse",
+    "message": "Une chute a été détectée et la personne n'a pas répondu à la demande de confirmation. Prenez de ses nouvelles."
+  }
+}
+```
+
+| Champ | Type | Description |
+|---|---|---|
+| `eventId` | string (UUID) | Identifiant de la notification ; l'API ignore un doublon (QoS 1). |
+| `seniorId` | string | Personne concernée. |
+| `type` | `NotificationRequested` | Seul type de notification pour l'instant. |
+| `timestamp` | string (ISO 8601, UTC) | Moment où la notification a été décidée. |
+| `payload.alertId` | string | Alerte à l'origine de la notification. |
+| `payload.recipientRole` | `FAMILY` \| `MEDICAL` | Rôle destinataire. |
+| `payload.priority` | `INFO` \| `NORMAL` \| `URGENT` | Priorité d'affichage. |
+| `payload.severity`, `payload.reason`, `payload.escalationCause` | voir §6 | Repris de l'alerte. |
+| `payload.title`, `payload.message` | string | Texte destiné aux personnes, en français. |

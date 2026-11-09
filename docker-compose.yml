@@ -1,5 +1,5 @@
 # Infrastructure et services du projet.
-# Les services métier (api-gateway, notification, application web) seront ajoutés au fur et à mesure.
+# L'application web sera ajoutée avec les vues (senior, famille, médical).
 #
 # Lancement :  docker compose up --build
 # Arrêt      :  docker compose down
@@ -81,6 +81,22 @@ services:
       PRE_CONFIRMATION_DELAY_S: ${PRE_CONFIRMATION_DELAY_S:-60}
       RECOVERY_WINDOW_S: ${RECOVERY_WINDOW_S:-90}
       CRITICAL_ESCALATION_DELAY_S: ${CRITICAL_ESCALATION_DELAY_S:-300}
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # --- Notification : qui prévenir selon la gravité d'une alerte (ADR 0008) ---
+  notification:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    container_name: notification
+    environment:
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_CLIENT_ID: notification
     depends_on:
       mosquitto:
         condition: service_healthy

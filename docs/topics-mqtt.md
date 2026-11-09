@@ -8,9 +8,9 @@ Tous les échanges asynchrones passent par le broker **Mosquitto** (`mosquitto:1
 
 ```
 [capteurs Zigbee] ─► Zigbee2MQTT ─► zigbee2mqtt/{sensorId} ─┐
-                                                            ├─► [Node-RED] ─┬─► signals/{seniorId}/{type} ─► [détection] ─► alerts/{seniorId}/{eventType} ─┬─► [notification]
-[montre] ─► appli compagnon ─► HTTP POST /ingest/watch ─────┘               │                                                                        └─► [api-gateway] ─► WebSocket
-                                                                            └─► ingestion/rejected
+                                                            ├─► [Node-RED] ─┬─► signals/{seniorId}/{type} ─► [détection] ─► alerts/{seniorId}/{eventType} ─┬─► [notification] ─► notifications/{seniorId} ─┐
+[montre] ─► appli compagnon ─► HTTP POST /ingest/watch ─────┘               │                                                                        │                                                ▼
+                                                                            └─► ingestion/rejected                                                   └──────────────────────────────────────► [api-gateway] ─► WebSocket
 ```
 
 ---
@@ -22,12 +22,14 @@ Tous les échanges asynchrones passent par le broker **Mosquitto** (`mosquitto:1
 | `zigbee2mqtt/{sensorId}` | Message brut d'un capteur fixe (PIR, bande de pression) | Format Zigbee2MQTT du modèle de capteur (non normalisé) | Zigbee2MQTT ; en démonstration, le simulateur Node-RED | Node-RED |
 | `signals/{seniorId}/{type}` | Signal normalisé (`RawSignal`) | §1 à §3 de `format-evenements.md` | Node-RED | Détection, historisation |
 | `ingestion/rejected` | Message que Node-RED n'a pas pu normaliser | §7 de `format-evenements.md` | Node-RED | Supervision / débogage |
-| `alerts/{seniorId}/{eventType}` | Événement de domaine (pré-confirmation, alerte critique) | §6 de `format-evenements.md` | Détection | Notification, api-gateway |
+| `alerts/{seniorId}/{eventType}` | Événement de domaine (pré-confirmation, alerte critique) | §6 de `format-evenements.md` | Détection | Notification (alertes critiques), api-gateway |
+| `notifications/{seniorId}` | Notification à remettre à un rôle (`NotificationRequested`) | §9 de `format-evenements.md` | Notification | api-gateway |
 
 Exemples :
 - `zigbee2mqtt/pir-cuisine`
 - `signals/senior-001/FALL_IMPACT`
 - `alerts/senior-001/CriticalAlertGenerated`
+- `notifications/senior-001`
 
 ### Pourquoi `zigbee2mqtt/{sensorId}` en entrée ?
 
@@ -53,9 +55,10 @@ Les jokers MQTT permettent à chaque service de ne recevoir que ce qui le concer
 |---|---|---|
 | Node-RED | `zigbee2mqtt/+` | Tous les capteurs fixes |
 | Détection | `signals/+/+` | Tous les signaux de tous les seniors |
-| Notification | `alerts/+/CriticalAlertGenerated` et `alerts/+/PreConfirmationRequested` | Les alertes à envoyer et les demandes de levée de doute à pousser sur la montre |
+| Notification | `alerts/+/CriticalAlertGenerated` | Les alertes avérées (niveaux 2 et 3) : choix des rôles à prévenir (ADR 0008). La levée de doute est poussée au senior par l'api-gateway |
 | api-gateway | `alerts/#` | Tous les événements de domaine : journal des alertes en base, relayés en WebSocket à l'application web |
 | api-gateway (historique) | `signals/#` | Tous les signaux, enregistrés dans l'historique en base (table `signals`) |
+| api-gateway (notifications) | `notifications/+` | Les notifications par rôle : remises aux personnes ayant une relation consentie (table `notifications`), poussées en WebSocket au seul destinataire |
 
 Un frontend ne s'abonne jamais directement au broker : il passe par l'api-gateway, qui filtre selon les droits de l'utilisateur.
 
@@ -63,8 +66,8 @@ Un frontend ne s'abonne jamais directement au broker : il passe par l'api-gatewa
 
 ## 4. Règles
 
-- **QoS 1** (« au moins une fois ») pour `signals/...`, `alerts/...` et `ingestion/rejected` : un message n'est pas perdu si le réseau coupe brièvement. Contrepartie : un message peut arriver **en double**, d'où le `eventId` unique qui permet aux abonnés d'ignorer un doublon.
-- **Sessions persistantes** (`clean session = false`, identifiant client fixe) pour la détection et la notification : si le service redémarre, le broker garde les messages QoS 1 arrivés entre-temps. Cela limite le risque R9 (perte de données non traitées) sans ajouter de file de messages dédiée (ADR 0002). Mosquitto est configuré avec `persistence true` : les sessions et messages en attente survivent aussi à un redémarrage propre du broker. La détection l'utilise (identifiant `detection`) ; un test d'intégration le vérifie.
+- **QoS 1** (« au moins une fois ») pour `signals/...`, `alerts/...`, `notifications/...` et `ingestion/rejected` : un message n'est pas perdu si le réseau coupe brièvement. Contrepartie : un message peut arriver **en double**, d'où le `eventId` unique qui permet aux abonnés d'ignorer un doublon.
+- **Sessions persistantes** (`clean session = false`, identifiant client fixe) pour la détection et la notification : si le service redémarre, le broker garde les messages QoS 1 arrivés entre-temps. Cela limite le risque R9 (perte de données non traitées) sans ajouter de file de messages dédiée (ADR 0002). Mosquitto est configuré avec `persistence true` : les sessions et messages en attente survivent aussi à un redémarrage propre du broker. La détection (identifiant `detection`), la notification (`notification`) et l'api-gateway (`api-gateway`) l'utilisent ; des tests d'intégration le vérifient pour la détection et la notification.
 - **Pas de `retain`** : les messages sont des événements, pas des états. Un nouvel abonné ne doit pas recevoir une vieille alerte comme si elle venait d'arriver.
 - **Identifiants dans les topics** : `seniorId`, `sensorId` et `type` ne contiennent jamais `/`, `+` ni `#` (caractères réservés de MQTT). Notre typage strict l'impose.
 - **Constantes partagées** : les services TypeScript n'écrivent pas les noms de topics à la main, ils utilisent `packages/shared-types/src/topics.ts`.

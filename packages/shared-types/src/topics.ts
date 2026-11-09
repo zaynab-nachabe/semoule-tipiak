@@ -14,6 +14,8 @@ export const Topics = {
   signal: (seniorId: TopicSafeId, type: SignalType): string => `signals/${seniorId}/${type}`,
   /** Événement de domaine émis par la détection. */
   alert: (seniorId: TopicSafeId, type: DomainEventType): string => `alerts/${seniorId}/${type}`,
+  /** Notification émise par le service de notification. */
+  notification: (seniorId: TopicSafeId): string => `notifications/${seniorId}`,
   /** Messages que l'ingestion n'a pas pu normaliser. */
   rejected: 'ingestion/rejected',
 } as const;
@@ -22,11 +24,9 @@ export const Topics = {
 export const Subscriptions = {
   ingestion: 'zigbee2mqtt/+',
   detection: 'signals/+/+',
-  notification: [
-    'alerts/+/CriticalAlertGenerated',
-    'alerts/+/PreConfirmationRequested',
-  ],
+  notification: 'alerts/+/CriticalAlertGenerated',
   apiGateway: 'alerts/#',
+  apiNotifications: 'notifications/+',
   history: 'signals/#',
 } as const;
 
