@@ -27,6 +27,21 @@ export function grantedSeniorIds(role: Role, relationships: readonly Relationshi
     .map((r) => r.seniorId);
 }
 
+/** Lien d'un aidant vers un senior, vu depuis le senior (pour trouver qui prévenir). */
+export interface CaregiverLink extends RelationshipRecord {
+  readonly caregiverId: string;
+}
+
+/**
+ * Personnes à qui remettre une notification adressée à un rôle : même règle que l'accès aux données
+ * (relation consentie, non révoquée, du type du rôle). Une famille sans consentement n'est pas prévenue.
+ */
+export function recipientIdsForRole(role: Role, links: readonly CaregiverLink[]): string[] {
+  return links
+    .filter((l) => l.relationType === role && l.consentStatus === 'GRANTED' && l.revokedAt === null)
+    .map((l) => l.caregiverId);
+}
+
 export function accessibleSeniorIds(ctx: AccessContext): string[] {
   return ctx.role === 'SENIOR' ? (ctx.ownSeniorId ? [ctx.ownSeniorId] : []) : [...ctx.grantedSeniorIds];
 }

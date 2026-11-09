@@ -95,6 +95,25 @@ Un point de série temporelle, pour les graphiques. `unit` reprend celle du payl
 }
 ```
 
+### `NotificationView`
+
+Une notification remise à **une personne** (boîte de réception de la famille et du médical). Le service de notification choisit les rôles, la priorité et le texte ; l'API la remet aux personnes de ce rôle qui ont une relation consentie avec le senior ([ADR 0008](adr/0008-service-de-notification.md)). `priority` : `INFO | NORMAL | URGENT`. Le texte est rédigé pour être lu par la famille : il décrit la situation, sans donnée médicale.
+
+```jsonc
+{
+  "notificationId": "5b0c…",
+  "seniorId": "senior-001",
+  "alertId": "a1b2…",
+  "priority": "URGENT",
+  "severity": "CRITICAL",
+  "reason": "FALL_DETECTED",
+  "title": "Chute : aucun signe de relèvement",
+  "message": "Plusieurs minutes après une chute, la personne ne s'est toujours pas relevée. Une intervention est nécessaire.",
+  "createdAt": "2026-01-15T14:41:00.000Z",
+  "readAt": null
+}
+```
+
 ---
 
 ## 3. Endpoints REST
@@ -108,6 +127,12 @@ Un point de série temporelle, pour les graphiques. `unit` reprend celle du payl
 | `POST` | `/auth/login` | public | Requête `LoginRequest` (`{ email }`), réponse `LoginResponse` (`{ token, user }`). Compte inconnu → `401`. | ✅ |
 | `POST` | `/auth/logout` | tous | `204`. Le jeton (JWT) est sans état : l'application l'oublie ; il expire au bout de 12 h. | ✅ |
 | `GET` | `/me` | tous | `MeView` : profil, rôle et seniors accessibles (`{ seniorId, fullName }[]`). | ✅ |
+
+### Notifications (boîte de réception de l'appelant)
+| Méthode | Chemin | Rôles | Description | Statut |
+|---|---|---|---|---|
+| `GET` | `/me/notifications?unreadOnly=true` | tous (en pratique famille et médical) | `Paginated<NotificationView>` : uniquement les notifications de l'appelant, de la plus récente à la plus ancienne. | ✅ |
+| `POST` | `/me/notifications/{notificationId}/read` | tous | Marque comme lue → `NotificationView` avec `readAt` (idempotent). La notification d'une autre personne → `404`. | ✅ |
 
 ### Consultation
 | Méthode | Chemin | Rôles | Renvoie | Statut |
@@ -140,13 +165,14 @@ Un point de série temporelle, pour les graphiques. `unit` reprend celle du payl
 
 ## 4. Temps réel (WebSocket)
 
-L'application ouvre une connexion **socket.io** sur le port de l'API, avec le jeton dans `auth: { token }`. L'API vérifie le jeton, puis abonne la connexion aux seniors auxquels elle a droit (message `ready` : `{ seniors: string[] }`) ; un jeton invalide ferme la connexion. L'API y pousse, sans que le client interroge en boucle :
+L'application ouvre une connexion **socket.io** sur le port de l'API, avec le jeton dans `auth: { token }`. L'API vérifie le jeton, puis abonne la connexion aux seniors auxquels elle a droit et à sa propre boîte de réception (message `ready` : `{ seniors: string[] }`) ; un jeton invalide ferme la connexion. L'API y pousse, sans que le client interroge en boucle :
 
 | Message poussé | Contenu | Rôles concernés | Statut |
 |---|---|---|---|
 | `preconfirmation.requested` | `Pick<PreConfirmationRequestedPayload, 'alertId' \| 'reason' \| 'expiresAt'>` + `seniorId` | senior uniquement (affiche « tout va bien ? ») | ✅ |
 | `alert.created` | `AlertView` | senior : dès la levée de doute ; famille et médical : **à partir de l'escalade** (niveau 2 et plus, ADR 0005) | ✅ |
 | `alert.updated` | `AlertView` (statut, gravité ou prise en charge changés) | idem | ✅ |
+| `notification.created` | `NotificationView` | **le seul destinataire** : famille (`NORMAL` au niveau 2, `URGENT` au niveau 3) et médical (`INFO` puis `URGENT`) | ✅ |
 | `status.changed` | `SeniorStatusView` | tous ceux ayant accès au senior | à venir |
 
 Chaque message est **projeté selon le rôle** du destinataire (§5) : la famille reçoit la gravité mais pas la cause clinique, le senior ni l'une ni l'autre.

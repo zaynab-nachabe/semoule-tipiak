@@ -20,11 +20,13 @@ const schemas = {
   signal: load('raw-signal.schema.json'),
   event: load('domain-event.schema.json'),
   rejected: load('rejected-message.schema.json'),
+  notification: load('notification.schema.json'),
 };
 const validate = {
   signal: ajv.compile(schemas.signal),
   event: ajv.compile(schemas.event),
   rejected: ajv.compile(schemas.rejected),
+  notification: ajv.compile(schemas.notification),
 };
 const errorsOf = (kind) => JSON.stringify(validate[kind].errors);
 
@@ -45,6 +47,7 @@ test('les exemples complets du document respectent les schémas', () => {
     let kind = null;
     if ('sensorId' in o) kind = 'signal';
     else if ('originalMessage' in o) kind = 'rejected';
+    else if (o.type === 'NotificationRequested') kind = 'notification';
     else if ('seniorId' in o && o.payload && Object.keys(o.payload).length > 0) kind = 'event';
     if (!kind) continue; // fragment de payload ou enveloppe d'illustration
     checked++;
@@ -56,6 +59,7 @@ test('les exemples complets du document respectent les schémas', () => {
 test('les payloads documentés par type respectent les schémas', () => {
   let checked = 0;
   for (const [, type, body] of doc.matchAll(/### `(\w+)`\n```json\n([\s\S]*?)```/g)) {
+    if (type === 'NotificationRequested') continue; // exemple complet (§9), validé par le test précédent
     const payload = JSON.parse(body);
     const isSignal = /^[A-Z_]+$/.test(type);
     const message = isSignal
@@ -106,6 +110,19 @@ for (const [name, message] of Object.entries(invalidSignals)) {
   test(`signal refusé : ${name}`, () => assert.equal(validate.signal(message), false));
 }
 
+test('notification refusée : le senior n\'est pas un rôle destinataire, et le texte est obligatoire', () => {
+  const notification = {
+    eventId: UUID,
+    seniorId: 'senior-001',
+    type: 'NotificationRequested',
+    timestamp: NOW,
+    payload: { alertId: 'a', recipientRole: 'FAMILY', priority: 'URGENT', severity: 'CRITICAL', reason: 'FALL_DETECTED', escalationCause: 'NO_RECOVERY', title: 'T', message: 'M' },
+  };
+  assert.equal(validate.notification(notification), true, errorsOf('notification'));
+  assert.equal(validate.notification({ ...notification, payload: { ...notification.payload, recipientRole: 'SENIOR' } }), false);
+  assert.equal(validate.notification({ ...notification, payload: { ...notification.payload, message: '' } }), false);
+});
+
 test('événement de domaine refusé : alerte critique sans signal déclencheur', () => {
   assert.equal(
     validate.event({
@@ -147,6 +164,11 @@ test('les enums TypeScript correspondent aux enums des schémas', () => {
     ['domain-events.ts', 'CancellationCause', schemas.event.definitions.CancellationCause.enum],
     ['rejected-message.ts', 'RejectionReason', schemas.rejected.properties.reason.enum],
     ['rejected-message.ts', 'IngestionProtocol', schemas.rejected.properties.source.properties.protocol.enum],
+    ['notifications.ts', 'NotificationType', schemas.notification.properties.type.enum],
+    ['notifications.ts', 'RecipientRole', schemas.notification.properties.payload.properties.recipientRole.enum],
+    ['notifications.ts', 'NotificationPriority', schemas.notification.properties.payload.properties.priority.enum],
+    ['domain-events.ts', 'Severity', schemas.notification.properties.payload.properties.severity.enum],
+    ['domain-events.ts', 'EscalationCause', schemas.notification.properties.payload.properties.escalationCause.enum],
   ];
   for (const [file, name, schemaEnum] of pairs) {
     assert.deepEqual(sorted(tsValues(file, name)), sorted(schemaEnum), `${name} : TypeScript et schéma divergent`);

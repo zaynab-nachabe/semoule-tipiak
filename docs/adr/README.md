@@ -11,6 +11,7 @@ Chaque ADR justifie une décision structurante : contexte, décision, conséquen
 | [0005](0005-echelle-de-gravite.md) | Échelle de gravité à 4 niveaux et passage automatique au niveau 3 | Acceptée |
 | [0006](0006-api-nestjs-prisma-journal.md) | API NestJS 11 + Prisma 5, journal des alertes et historique alimentés par les événements | Acceptée |
 | [0007](0007-actions-application-via-ingestion.md) | Les actions de l'application passent par l'ingestion, comme des signaux | Acceptée |
+| [0008](0008-service-de-notification.md) | Service de notification séparé, qui décide par rôle ; l'API remet aux personnes | Acceptée |
 
 ## Modèle
 

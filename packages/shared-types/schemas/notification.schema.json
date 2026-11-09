@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "notification.schema.json",
+  "title": "NotificationRequested",
+  "description": "Notification publiée par le service de notification, une par rôle destinataire. Voir docs/format-evenements.md §9.",
+  "type": "object",
+  "required": ["eventId", "seniorId", "type", "timestamp", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "seniorId": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+    "type": { "type": "string", "enum": ["NotificationRequested"] },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$"
+    },
+    "payload": {
+      "type": "object",
+      "required": ["alertId", "recipientRole", "priority", "severity", "reason", "escalationCause", "title", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "alertId": { "type": "string", "minLength": 1 },
+        "recipientRole": { "type": "string", "enum": ["FAMILY", "MEDICAL"] },
+        "priority": { "type": "string", "enum": ["INFO", "NORMAL", "URGENT"] },
+        "severity": { "type": "string", "enum": ["SYSTEM", "PRE_ALERT", "WARNING", "CRITICAL"] },
+        "reason": { "type": "string", "enum": ["FALL_DETECTED", "PROLONGED_INACTIVITY", "HELP_REQUESTED"] },
+        "escalationCause": { "type": "string", "enum": ["NO_RESPONSE", "SENIOR_CONFIRMED", "IMMEDIATE", "NO_RECOVERY"] },
+        "title": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

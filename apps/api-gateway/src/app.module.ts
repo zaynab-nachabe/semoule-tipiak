@@ -8,6 +8,8 @@ import { AuthService } from './auth/auth.service';
 import { API_CONFIG, loadConfig } from './config';
 import { EventIngestionService } from './events/event-ingestion.service';
 import { HealthController } from './health/health.controller';
+import { NotificationsController } from './notifications/notifications.controller';
+import { NotificationsService } from './notifications/notifications.service';
 import { PrismaService } from './prisma/prisma.service';
 import { RealtimeGateway } from './realtime/realtime.gateway';
 import { SeniorsController } from './seniors/seniors.controller';
@@ -17,7 +19,7 @@ const config = loadConfig();
 
 @Module({
   imports: [JwtModule.register({ secret: config.jwtSecret, signOptions: { expiresIn: config.jwtExpiresIn as `${number}h` } })],
-  controllers: [AuthController, SeniorsController, HealthController],
+  controllers: [AuthController, SeniorsController, NotificationsController, HealthController],
   providers: [
     { provide: API_CONFIG, useValue: config },
     PrismaService,
@@ -26,6 +28,7 @@ const config = loadConfig();
     AuthGuard,
     AlertsService,
     SignalsService,
+    NotificationsService,
     RealtimeGateway,
     EventIngestionService,
   ],

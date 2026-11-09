@@ -1,23 +1,27 @@
 // Abonnements MQTT de l'API (docs/topics-mqtt.md §3) :
 //   alerts/#   événements de domaine -> journal des alertes + temps réel
-//   signals/#  signaux normalisés    -> historique (décision D3)
+//   signals/#        signaux normalisés     -> historique (décision D3)
+//   notifications/+  notifications par rôle -> boîte de réception de chaque destinataire + temps réel (ADR 0008)
 // Session persistante (identifiant fixe) : les messages reçus pendant un redémarrage sont remis ensuite.
 
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Ajv from 'ajv';
 import { connect, type MqttClient } from 'mqtt';
-import { MQTT_QOS, Subscriptions, type DomainEvent, type RawSignal } from '@project/shared-types';
+import { MQTT_QOS, Subscriptions, type DomainEvent, type NotificationRequested, type RawSignal } from '@project/shared-types';
 import domainEventSchema from '@project/shared-types/schemas/domain-event.schema.json';
+import notificationSchema from '@project/shared-types/schemas/notification.schema.json';
 import rawSignalSchema from '@project/shared-types/schemas/raw-signal.schema.json';
 import { AlertsService } from '../alerts/alerts.service';
 import { RecentIds } from '../common/recent-ids';
 import { API_CONFIG, type ApiConfig } from '../config';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { SignalsService } from '../signals/signals.service';
 
 const ajv = new Ajv({ strict: true, allErrors: true });
 const validateEvent = ajv.compile<DomainEvent>(domainEventSchema);
 const validateSignal = ajv.compile<RawSignal>(rawSignalSchema);
+const validateNotification = ajv.compile<NotificationRequested>(notificationSchema);
 
 @Injectable()
 export class EventIngestionService implements OnModuleInit, OnModuleDestroy {
@@ -30,6 +34,7 @@ export class EventIngestionService implements OnModuleInit, OnModuleDestroy {
     @Inject(API_CONFIG) private readonly config: ApiConfig,
     private readonly alerts: AlertsService,
     private readonly signals: SignalsService,
+    private readonly notifications: NotificationsService,
     private readonly realtime: RealtimeGateway,
   ) {}
 
@@ -42,9 +47,9 @@ export class EventIngestionService implements OnModuleInit, OnModuleDestroy {
     this.client = client;
     client.on('connect', () => {
       this.connected = true;
-      client.subscribe([Subscriptions.apiGateway, Subscriptions.history], { qos: MQTT_QOS }, (error) => {
+      client.subscribe([Subscriptions.apiGateway, Subscriptions.history, Subscriptions.apiNotifications], { qos: MQTT_QOS }, (error) => {
         if (error) this.logger.error(`abonnement impossible : ${error.message}`);
-        else this.logger.log(`connecté à ${this.config.mqttUrl}, abonné à ${Subscriptions.apiGateway} et ${Subscriptions.history}`);
+        else this.logger.log(`connecté à ${this.config.mqttUrl}, abonné à ${Subscriptions.apiGateway}, ${Subscriptions.history} et ${Subscriptions.apiNotifications}`);
       });
     });
     client.on('close', () => (this.connected = false));
@@ -89,6 +94,17 @@ export class EventIngestionService implements OnModuleInit, OnModuleDestroy {
         await this.realtime.publishPreConfirmation(data.seniorId, data.payload);
       }
       if (change) await this.realtime.publishAlertChange(change);
+      return;
+    }
+
+    if (topic.startsWith('notifications/')) {
+      if (!validateNotification(data)) {
+        this.logger.warn(`notification ignorée (non conforme) sur ${topic}`);
+        return;
+      }
+      // Pas de mémoire des doublons ici : la contrainte unique (eventId, destinataire) en base suffit.
+      const delivered = await this.notifications.deliver(data);
+      this.realtime.publishNotifications(delivered);
     }
   }
 }

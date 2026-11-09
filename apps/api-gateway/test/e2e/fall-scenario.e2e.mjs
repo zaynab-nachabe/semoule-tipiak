@@ -85,7 +85,7 @@ await step('temps réel : les trois rôles se connectent', async () => {
   for (const role of Object.keys(inbox)) {
     const socket = io(API, { auth: { token: tokens[role] }, transports: ['websocket'] });
     sockets.push(socket);
-    for (const type of ['preconfirmation.requested', 'alert.created', 'alert.updated']) {
+    for (const type of ['preconfirmation.requested', 'alert.created', 'alert.updated', 'notification.created']) {
       socket.on(type, (message) => inbox[role].push({ type, message }));
     }
     await new Promise((resolve, reject) => {
@@ -130,6 +130,33 @@ await step('niveau 3 : l\'alerte passe CRITICAL (NO_RECOVERY)', async () => {
   );
   const medical = inbox.MEDICAL.filter((m) => m.type === 'alert.updated').at(-1).message;
   assert.equal(medical.escalationCause, 'NO_RECOVERY');
+});
+
+const notificationsFor = (role) =>
+  inbox[role].filter((m) => m.type === 'notification.created' && m.message.alertId === alertId).map((m) => m.message);
+
+await step('notifications (service de notification -> API) : routage selon la gravité, à chaque destinataire', async () => {
+  await waitUntil(() => notificationsFor('FAMILY').length >= 2 && notificationsFor('MEDICAL').length >= 2, 10_000, 'notifications');
+  const family = notificationsFor('FAMILY').map((n) => `${n.severity}/${n.priority}`);
+  const medical = notificationsFor('MEDICAL').map((n) => `${n.severity}/${n.priority}`);
+  assert.deepEqual(family, ['WARNING/NORMAL', 'CRITICAL/URGENT']);
+  assert.deepEqual(medical, ['WARNING/INFO', 'CRITICAL/URGENT']);
+  assert.ok(notificationsFor('MEDICAL')[0].title.startsWith('Pour information'));
+  assert.equal(notificationsFor('SENIOR').length, 0, 'le senior ne reçoit pas de notification');
+});
+
+await step('boîte de réception : la famille retrouve ses notifications et les marque comme lues', async () => {
+  const unread = (await api('/me/notifications?unreadOnly=true', { token: tokens.FAMILY })).body;
+  const mine = unread.items.filter((n) => n.alertId === alertId);
+  assert.equal(mine.length, 2);
+  const { status, body } = await api(`/me/notifications/${mine[0].notificationId}/read`, { method: 'POST', token: tokens.FAMILY });
+  assert.equal(status, 200);
+  assert.ok(body.readAt);
+  const after = (await api('/me/notifications?unreadOnly=true', { token: tokens.FAMILY })).body;
+  assert.equal(after.items.filter((n) => n.alertId === alertId).length, 1);
+  // La notification d'une autre personne est introuvable pour elle.
+  const otherRead = await api(`/me/notifications/${mine[1].notificationId}/read`, { method: 'POST', token: tokens.MEDICAL });
+  assert.equal(otherRead.status, 404);
 });
 
 await step('REST : historique, statut et mesures cohérents avec le temps réel', async () => {

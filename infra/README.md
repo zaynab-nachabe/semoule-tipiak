@@ -29,11 +29,12 @@ Au premier lancement, Docker télécharge les images et construit celle de la d�
 | **postgres** | Base de données relationnelle | `localhost:5432` (base/identifiants définis dans `.env`) |
 | **node-red** | Passerelle d'ingestion (et simulateur de capteurs) | Interface web : http://localhost:1880 |
 | **detection** | Corrélation des signaux, levée de doute, alertes | Journal : `docker compose logs -f detection` |
+| **notification** | Qui prévenir (famille, médical) selon la gravité d'une alerte | Journal : `docker compose logs -f notification` |
 | **api-gateway** | API REST + WebSocket, journal des alertes, historique des signaux | http://localhost:3000 (`/health`, `/auth/users`) |
 
 Les services communiquent entre eux par leur **nom** sur le réseau Docker commun (ex. depuis Node-RED, le broker est joignable à `mosquitto:1883`).
 
-**Ordre de démarrage** : Mosquitto et PostgreSQL ont un contrôle de santé (*healthcheck*) ; Node-RED et la détection attendent que le broker réponde avant de démarrer. Tous les services redémarrent automatiquement en cas d'arrêt inattendu (`restart: unless-stopped`).
+**Ordre de démarrage** : Mosquitto et PostgreSQL ont un contrôle de santé (*healthcheck*) ; Node-RED, la détection, la notification et l'API attendent que le broker réponde avant de démarrer (l'API attend aussi PostgreSQL). Tous les services redémarrent automatiquement en cas d'arrêt inattendu (`restart: unless-stopped`).
 
 ## Vérifier que tout tourne
 
@@ -41,7 +42,7 @@ Les services communiquent entre eux par leur **nom** sur le réseau Docker commu
 docker compose ps        # les services doivent être "Up" (mosquitto et postgres : "healthy")
 ```
 
-Puis ouvrir http://localhost:1880 : l'éditeur Node-RED doit s'afficher, avec les onglets **Ingestion** et **Simulateur**. Pour tester le pipeline avec des capteurs simulés, voir [services/ingestion/README.md](../services/ingestion/README.md) ; pour suivre les alertes, [services/detection/README.md](../services/detection/README.md).
+Puis ouvrir http://localhost:1880 : l'éditeur Node-RED doit s'afficher, avec les onglets **Ingestion** et **Simulateur**. Pour tester le pipeline avec des capteurs simulés, voir [services/ingestion/README.md](../services/ingestion/README.md) ; pour suivre les alertes, [services/detection/README.md](../services/detection/README.md) et [services/notification/README.md](../services/notification/README.md).
 
 ## Arrêter
 
@@ -62,5 +63,5 @@ docker compose down -v    # le -v supprime aussi les volumes
 
 ## Notes
 
-- Les services métier restants (api-gateway, notification, application web) seront ajoutés au `docker-compose.yml` au fur et à mesure qu'ils auront du code.
+- L'application web (vues senior, famille, médical) sera ajoutée au `docker-compose.yml` avec son code.
 - Versions d'images fixées (`eclipse-mosquitto:2`, `postgres:16`, `nodered/node-red:4.1.12`) pour que le projet se construise de la même façon sur toutes les machines.

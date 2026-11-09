@@ -3,6 +3,7 @@
 
 import type { IsoUtcTimestamp, TopicSafeId } from './common.js';
 import type { AlertReason, CancellationCause, EscalationCause, PreConfirmationRequestedPayload, Severity } from './domain-events.js';
+import type { NotificationPriority } from './notifications.js';
 
 export const Role = { SENIOR: 'SENIOR', FAMILY: 'FAMILY', MEDICAL: 'MEDICAL' } as const;
 export type Role = (typeof Role)[keyof typeof Role];
@@ -90,11 +91,28 @@ export interface MeView extends UserSummary {
   seniors: { seniorId: TopicSafeId; fullName: string }[];
 }
 
+// ─── Notifications (boîte de réception de l'appelant) ───
+
+/** Une notification remise à l'appelant (docs/format-evenements.md §9, ADR 0008). */
+export interface NotificationView {
+  notificationId: string;
+  seniorId: TopicSafeId;
+  alertId: string;
+  priority: NotificationPriority;
+  severity: Severity;
+  reason: AlertReason;
+  title: string;
+  message: string;
+  createdAt: IsoUtcTimestamp;
+  readAt: IsoUtcTimestamp | null;
+}
+
 // ─── Temps réel (WebSocket, docs/contrat-api.md §4) ───
 
 export interface RealtimeMessageByType {
   'alert.created': AlertView;
   'alert.updated': AlertView;
+  'notification.created': NotificationView;
   'preconfirmation.requested': Pick<PreConfirmationRequestedPayload, 'alertId' | 'reason' | 'expiresAt'> & { seniorId: TopicSafeId };
 }
 export type RealtimeMessageType = keyof RealtimeMessageByType;

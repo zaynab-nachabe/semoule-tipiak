@@ -10,6 +10,7 @@ import { AccessService } from '../access/access.service';
 import type { AlertChange } from '../alerts/alerts.service';
 import { isPushedTo, toAlertView } from '../alerts/alert-view';
 import { AuthService } from '../auth/auth.service';
+import type { DeliveredNotification } from '../notifications/notifications.service';
 
 interface ClientData {
   personId: string;
@@ -17,6 +18,8 @@ interface ClientData {
 }
 
 const room = (seniorId: string) => `senior:${seniorId}`;
+/** Salle personnelle : une notification n'est poussée qu'à son destinataire. */
+const personRoom = (personId: string) => `person:${personId}`;
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class RealtimeGateway implements OnGatewayConnection {
@@ -39,7 +42,7 @@ export class RealtimeGateway implements OnGatewayConnection {
       const data: ClientData = { personId: user.personId, role: user.role };
       client.data = data;
       const seniors = accessibleSeniorIds(ctx);
-      await client.join(seniors.map(room));
+      await client.join([...seniors.map(room), personRoom(user.personId)]);
       client.emit('ready', { seniors });
     } catch (error) {
       this.logger.warn(`connexion temps réel refusée : ${error instanceof Error ? error.message : String(error)}`);
@@ -57,6 +60,14 @@ export class RealtimeGateway implements OnGatewayConnection {
       const firstTimeVisible = change.change === 'created' || (change.previous !== null && !isPushedTo(change.previous, role));
       const type: keyof RealtimeMessageByType = firstTimeVisible ? 'alert.created' : 'alert.updated';
       socket.emit(type, toAlertView(change.next, role));
+    }
+  }
+
+  /** Notifications : chacune à son seul destinataire. */
+  publishNotifications(delivered: readonly DeliveredNotification[]): void {
+    for (const { recipientId, view } of delivered) {
+      const message: RealtimeMessageByType['notification.created'] = view;
+      this.server.to(personRoom(recipientId)).emit('notification.created', message);
     }
   }
 

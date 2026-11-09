@@ -93,6 +93,9 @@ model Person {
   // Relations de suivi où cette personne est l'aidant/soignant.
   caringRelationships CareRelationship[] @relation("Caregiver")
 
+  // Notifications reçues (boîte de réception).
+  notifications Notification[]
+
   @@map("persons")
 }
 
@@ -202,6 +205,36 @@ model Alert {
 
   @@index([seniorId, createdAt])
   @@map("alerts")
+}
+
+enum NotificationPriority {
+  INFO
+  NORMAL
+  URGENT
+}
+
+/// Notifications remises aux personnes (boîte de réception de l'application). Le service de notification
+/// publie une notification par rôle (notifications/{seniorId}) ; l'API la remet à chaque personne de ce rôle
+/// ayant une relation consentie avec le senior. Un doublon (même eventId pour la même personne) est ignoré.
+model Notification {
+  id              String               @id @default(uuid())
+  eventId         String // eventId de la notification publiée (dédoublonnage)
+  recipientId     String
+  recipient       Person               @relation(fields: [recipientId], references: [id])
+  seniorId        String
+  alertId         String
+  priority        NotificationPriority
+  severity        Severity
+  reason          AlertReason
+  escalationCause EscalationCause
+  title           String
+  message         String
+  createdAt       DateTime
+  readAt          DateTime?
+
+  @@unique([eventId, recipientId])
+  @@index([recipientId, createdAt])
+  @@map("notifications")
 }
 
 /// Historique des signaux normalisés (signals/{seniorId}/{type}). L'eventId sert de clé :
