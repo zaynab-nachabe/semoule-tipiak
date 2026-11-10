@@ -71,7 +71,11 @@ Le statut courant d'un senior, pour la vue de tête de chaque frontend.
   "lastActivityAt": "2026-01-15T14:05:00.000Z",
   "currentRoom": "salon",                 // reconstruit depuis les événements de présence
   "activeAlert": null,                    // AlertView | null
-  "latestHeartRate": null                 // MeasurementPointView | null — rôles senior/médical ; absent pour la famille
+  "latestHeartRate": null,                // MeasurementPointView | null — rôles senior/médical ; absent pour la famille
+  "absence": {                            // AbsenceView | null — absence déclarée par le senior (ADR 0011), visible de tous
+    "since": "2026-01-15T09:00:00.000Z",
+    "until": "2026-01-15T17:00:00.000Z"   // retour prévu
+  }
 }
 ```
 
@@ -152,6 +156,8 @@ Une notification remise à **une personne** (boîte de réception de la famille 
 | `POST` | `/seniors/{seniorId}/help` | senior | « J'ai besoin d'aide » : même effet que le bouton de la montre (niveau 3). `202` + `ActionAcceptedView`. Ingestion indisponible → `503`. | ✅ |
 | `POST` | `/seniors/{seniorId}/alerts/{alertId}/acknowledge` | médical | Prise en charge → renseigne `acknowledgedAt` (idempotent ; alerte résolue → `409`). | ✅ |
 | `POST` | `/seniors/{seniorId}/alerts/{alertId}/close` | médical | Clôture après intervention → `RESOLVED`, renseigne `closedAt` (et `acknowledgedAt` s'il manquait). Seule une alerte escaladée se clôture : levée de doute en cours ou alerte déjà résolue → `409`. | ✅ |
+| `POST` | `/seniors/{seniorId}/absence` | senior | « Je m'absente » : corps `AbsenceRequest` (`{ until }`, retour prévu en ISO 8601 UTC, dans le futur, au plus 24 h ; sinon `400`) → `201` + `AbsenceView`. Remplace une absence en cours. L'inactivité n'est plus surveillée jusqu'au retour ([ADR 0011](adr/0011-absence-declaree.md)). | ✅ |
+| `DELETE` | `/seniors/{seniorId}/absence` | senior | « Je suis rentré(e) » : fin de l'absence en cours → `204` (idempotent). L'API la termine aussi seule sur un mouvement au domicile plus de 15 min après le départ. | ✅ |
 
 ### Configuration (médical uniquement)
 | Méthode | Chemin | Description | Statut |
@@ -178,6 +184,7 @@ L'application ouvre une connexion **socket.io** sur le port de l'API, avec le je
 | `alert.created` | `AlertView` | senior : dès la levée de doute ; famille et médical : **à partir de l'escalade** (niveau 2 et plus, ADR 0005) | ✅ |
 | `alert.updated` | `AlertView` (statut, gravité ou prise en charge changés) | idem | ✅ |
 | `notification.created` | `NotificationView` | **le seul destinataire** : famille (`NORMAL` au niveau 2, `URGENT` au niveau 3) et médical (`INFO` puis `URGENT`) | ✅ |
+| `absence.changed` | `{ seniorId, absence: AbsenceView \| null }` | tous ceux ayant accès au senior (absence déclarée, terminée ou remplacée) | ✅ |
 | `status.changed` | `SeniorStatusView` | tous ceux ayant accès au senior | à venir |
 
 Chaque message est **projeté selon le rôle** du destinataire (§5) : la famille reçoit la gravité mais pas la cause clinique, le senior ni l'une ni l'autre.
@@ -205,6 +212,7 @@ Projection par rôle :
 | État des capteurs | — | ✅ (simplifié) | ✅ |
 | Seuils d'inactivité (lecture et écriture), contacts | — | — | ✅ |
 | Annuler une alerte, demander de l'aide | ✅ | — | — |
+| Déclarer une absence, « je suis rentré(e) » | ✅ | — (la voit dans le statut) | — (la voit dans le statut) |
 
 > La famille ne reçoit jamais les données médicales détaillées (fréquence cardiaque brute, causes cliniques). C'est la minimisation des données (RGPD) appliquée au niveau de l'API.
 

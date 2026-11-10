@@ -4,7 +4,7 @@ Cœur de métier du système (DDD §3.1). Ce service reçoit les signaux normali
 
 **Périmètre : la chute (scénario A du DDD) et l'inactivité prolongée (scénario B).**
 
-Décisions : [ADR 0001](../../docs/adr/0001-detection-typescript-mqttjs.md) (TypeScript simple + mqtt.js), [0002](../../docs/adr/0002-mqtt-seul-bus-de-messages.md) (MQTT seul), [0003](../../docs/adr/0003-detection-chute-deux-niveaux.md) (détection en deux niveaux, 3,0 g), [0004](../../docs/adr/0004-sequence-de-relevement.md) (séquence de relèvement), [0005](../../docs/adr/0005-echelle-de-gravite.md) (gravité), [0010](../../docs/adr/0010-detection-inactivite.md) (inactivité, seuils lus à l'API puis mis à jour par message).
+Décisions : [ADR 0001](../../docs/adr/0001-detection-typescript-mqttjs.md) (TypeScript simple + mqtt.js), [0002](../../docs/adr/0002-mqtt-seul-bus-de-messages.md) (MQTT seul), [0003](../../docs/adr/0003-detection-chute-deux-niveaux.md) (détection en deux niveaux, 3,0 g), [0004](../../docs/adr/0004-sequence-de-relevement.md) (séquence de relèvement), [0005](../../docs/adr/0005-echelle-de-gravite.md) (gravité), [0010](../../docs/adr/0010-detection-inactivite.md) (inactivité, seuils lus à l'API puis mis à jour par message), [0011](../../docs/adr/0011-absence-declaree.md) (absence déclarée).
 
 ## Organisation
 
@@ -47,6 +47,8 @@ plus d'activité depuis le seuil du profil ─► PreConfirmationRequested (PROL
 ```
 
 **Activité** : `PIR_MOTION` ou changement d'une bande de pression, dans n'importe quelle pièce (« tout va bien » compte aussi). **Seuil applicable** : au lit (bande du lit appuyée), le plus long du profil ; sinon le plus court des seuils dont la plage contient l'heure locale ; sinon le seuil sans plage. **Profils** : lus à l'API au démarrage (`GET /internal/activity-profiles`, clé `SERVICE_TOKEN`, nouvel essai toutes les 5 s), puis mis à jour par les messages `profiles/{seniorId}`. Une seule alerte à la fois par senior.
+
+**Absence déclarée** (« je m'absente », reçue dans le profil) : pas de surveillance de l'inactivité jusqu'au retour prévu ; ensuite, le temps sans activité se compte depuis l'heure de retour prévue (ou depuis la fin anticipée de l'absence). La chute et le bouton d'aide restent surveillés.
 
 **Séquence de relèvement** : une **activité** (`PIR_MOTION` ou `PRESSURE_PLATE`) après l'impact, puis dans les 90 s une **stabilité** (`PRESSURE_PLATE` à `PRESSED`, ou `PIR_MOTION` dans une autre pièce). Si la levée de doute expire au milieu de la séquence, la décision est reportée une seule fois jusqu'à la fin des 90 s.
 

@@ -13,7 +13,7 @@ Tous les échanges asynchrones passent par le broker **Mosquitto** (`mosquitto:1
                                                                             └─► ingestion/rejected                                                   └──────────────────────────────────────► [api-gateway] ─► WebSocket
 ```
 
-En retour, l'api-gateway publie les seuils d'inactivité modifiés par l'équipe médicale : `[api-gateway] ─► profiles/{seniorId} ─► [détection]`.
+En retour, l'api-gateway publie les seuils d'inactivité modifiés par l'équipe médicale et l'absence déclarée par le senior : `[api-gateway] ─► profiles/{seniorId} ─► [détection]`.
 
 ---
 
@@ -26,7 +26,7 @@ En retour, l'api-gateway publie les seuils d'inactivité modifiés par l'équipe
 | `ingestion/rejected` | Message que Node-RED n'a pas pu normaliser | §7 de `format-evenements.md` | Node-RED | Supervision / débogage |
 | `alerts/{seniorId}/{eventType}` | Événement de domaine (pré-confirmation, alerte critique) | §6 de `format-evenements.md` | Détection | Notification (alertes critiques), api-gateway |
 | `notifications/{seniorId}` | Notification à remettre à un rôle (`NotificationRequested`) | §9 de `format-evenements.md` | Notification | api-gateway |
-| `profiles/{seniorId}` | Profil d'activité modifié par le médical (`ActivityProfileUpdated` : seuils d'inactivité) | §10 de `format-evenements.md` | api-gateway | Détection |
+| `profiles/{seniorId}` | Profil d'activité modifié (`ActivityProfileUpdated` : seuils d'inactivité changés par le médical, absence déclarée ou terminée par le senior) | §10 de `format-evenements.md` | api-gateway | Détection |
 
 Exemples :
 - `zigbee2mqtt/pir-cuisine`
@@ -59,7 +59,7 @@ Les jokers MQTT permettent à chaque service de ne recevoir que ce qui le concer
 |---|---|---|
 | Node-RED | `zigbee2mqtt/+` | Tous les capteurs fixes |
 | Détection | `signals/+/+` | Tous les signaux de tous les seniors |
-| Détection (seuils) | `profiles/+` | Les profils d'activité modifiés : seuils d'inactivité appliqués sans relire la base ([ADR 0010](adr/0010-detection-inactivite.md)). Au démarrage, la détection lit tous les profils à l'API (HTTP) |
+| Détection (seuils) | `profiles/+` | Les profils d'activité modifiés : seuils d'inactivité et absence appliqués sans relire la base ([ADR 0010](adr/0010-detection-inactivite.md), [ADR 0011](adr/0011-absence-declaree.md)). Au démarrage, la détection lit tous les profils à l'API (HTTP) |
 | Notification | `alerts/+/CriticalAlertGenerated` | Les alertes avérées (niveaux 2 et 3) : choix des rôles à prévenir (ADR 0008). La levée de doute est poussée au senior par l'api-gateway |
 | api-gateway | `alerts/#` | Tous les événements de domaine : journal des alertes en base, relayés en WebSocket à l'application web |
 | api-gateway (historique) | `signals/#` | Tous les signaux, enregistrés dans l'historique en base (table `signals`) |
