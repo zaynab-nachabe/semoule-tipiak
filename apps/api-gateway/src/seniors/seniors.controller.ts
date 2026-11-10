@@ -1,6 +1,7 @@
-import { BadRequestException, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
-import type { AlertView, MeasurementPointView, Paginated, SeniorStatusView } from '@project/shared-types';
+import { BadRequestException, ConflictException, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
+import type { ActionAcceptedView, AlertView, MeasurementPointView, Paginated, SeniorStatusView } from '@project/shared-types';
 import { AccessService } from '../access/access.service';
+import { IngestionClient } from '../actions/ingestion-client';
 import { AlertsService } from '../alerts/alerts.service';
 import { toAlertView } from '../alerts/alert-view';
 import { AuthGuard, CurrentUser } from '../auth/auth.guard';
@@ -18,6 +19,7 @@ export class SeniorsController {
     private readonly alerts: AlertsService,
     private readonly signals: SignalsService,
     private readonly realtime: RealtimeGateway,
+    private readonly ingestion: IngestionClient,
   ) {}
 
   @Get('status')
@@ -82,6 +84,35 @@ export class SeniorsController {
     const change = await this.alerts.close(seniorId, alertId, user.personId);
     if (change) await this.realtime.publishAlertChange(change);
     return toAlertView(change?.next ?? (await this.alerts.get(seniorId, alertId)), ctx.role);
+  }
+
+  /**
+   * « Tout va bien » (senior) : annule une levée de doute en cours. L'action passe par l'ingestion (ADR 0007) ;
+   * le résultat (alerte annulée) arrive ensuite en temps réel. Après l'escalade, l'annulation n'a plus d'effet → 409.
+   */
+  @Post('alerts/:alertId/cancel')
+  @HttpCode(202)
+  async cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('seniorId') seniorId: string,
+    @Param('alertId') alertId: string,
+  ): Promise<ActionAcceptedView> {
+    const ctx = await this.access.assertCanAccess(user.personId, seniorId);
+    this.access.assertCapability(ctx, 'CANCEL_ALERT');
+    const alert = await this.alerts.get(seniorId, alertId);
+    if (alert.status !== 'PRE_CONFIRMING') {
+      throw new ConflictException("La levée de doute est terminée : l'alerte ne peut plus être annulée");
+    }
+    return this.ingestion.send(seniorId, { kind: 'CANCEL_ALERT', alertId });
+  }
+
+  /** « J'ai besoin d'aide » (senior) : même effet que le bouton d'aide de la montre (ADR 0005, 0007). */
+  @Post('help')
+  @HttpCode(202)
+  async help(@CurrentUser() user: AuthenticatedUser, @Param('seniorId') seniorId: string): Promise<ActionAcceptedView> {
+    const ctx = await this.access.assertCanAccess(user.personId, seniorId);
+    this.access.assertCapability(ctx, 'REQUEST_HELP');
+    return this.ingestion.send(seniorId, { kind: 'HELP_BUTTON' });
   }
 
   /** Mesures brutes (médical uniquement) : ?type=HEART_RATE&from=…&to=… */

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AccessService } from './access/access.service';
+import { IngestionClient } from './actions/ingestion-client';
 import { AlertsService } from './alerts/alerts.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
@@ -31,6 +32,7 @@ const config = loadConfig();
     NotificationsService,
     RealtimeGateway,
     EventIngestionService,
+    IngestionClient,
   ],
 })
 export class AppModule {}

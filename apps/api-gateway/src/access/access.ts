@@ -55,6 +55,9 @@ export const Capability = {
   READ_MEASUREMENTS: ['MEDICAL'],
   ACKNOWLEDGE_ALERT: ['MEDICAL'],
   CLOSE_ALERT: ['MEDICAL'],
+  /** « Tout va bien » et « J'ai besoin d'aide » : le senior seulement, pour lui-même. */
+  CANCEL_ALERT: ['SENIOR'],
+  REQUEST_HELP: ['SENIOR'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export function hasCapability(role: Role, capability: keyof typeof Capability): boolean {

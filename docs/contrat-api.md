@@ -1,6 +1,6 @@
 # Contrat d'API (API ↔ Frontends)
 
-Ce document définit le **contrat de données** entre l'API (NestJS) et les trois frontends (senior, famille, médical). Il joue, côté affichage, le rôle que le *Format commun des événements* joue côté capteurs : un contrat partagé sur lequel le frontend s'appuie pour développer sans attendre l'implémentation de l'API.
+Ce document définit le **contrat de données** entre l'API (NestJS) et l'application web (une application, trois vues : senior, famille, médical — `apps/web`, [ADR 0009](adr/0009-application-web-react-nginx.md)). Il joue, côté affichage, le rôle que le *Format commun des événements* joue côté capteurs : un contrat partagé sur lequel le frontend s'appuie pour développer sans attendre l'implémentation de l'API.
 
 Il réutilise les types du package `shared-types` (`AlertReason`, `Severity`, `EscalationCause`, `CancellationCause`, `IsoUtcTimestamp`…) et ne les redéfinit pas.
 
@@ -14,11 +14,12 @@ Documents liés : [format-evenements.md](format-evenements.md) · [DDD_specifica
 
 ## 1. Principes
 
-- **Point d'entrée unique.** Les trois frontends ne parlent qu'à l'API. Ils n'accèdent jamais directement à la base ni aux autres services.
+- **Point d'entrée unique.** L'application web ne parle qu'à l'API. Ils n'accèdent jamais directement à la base ni aux autres services.
 - **Authentification par jeton.** Chaque requête porte un jeton (obtenu à la connexion). Sans jeton valide, l'API répond `401`. La connexion se fait par simple choix du compte dans une liste, sans mot de passe : l'authentification est hors du périmètre du sujet.
 - **Filtrage côté serveur.** L'API ne renvoie à chaque rôle que ce à quoi il a droit, selon la règle **(rôle × relation active consentie)** — voir §5. Le filtrage se fait dans l'API, jamais dans le frontend : une donnée non autorisée n'est pas « cachée », elle n'est pas envoyée.
 - **Deux canaux.** REST pour la consultation et les actions ; WebSocket pour les alertes poussées en temps réel (§4).
 - **Format.** Corps des requêtes et réponses en JSON. Dates en ISO 8601 UTC (`IsoUtcTimestamp`).
+- **Adresse.** Les chemins ci-dessous sont ceux de l'API (`http://localhost:3000/...`). L'application web les appelle sous `/api/...` sur sa propre origine (`http://localhost:8080/api/...`) : nginx retire le préfixe et relaie, ainsi que `/socket.io/` pour le temps réel.
 
 ---
 
@@ -147,8 +148,8 @@ Une notification remise à **une personne** (boîte de réception de la famille 
 ### Actions
 | Méthode | Chemin | Rôles | Description | Statut |
 |---|---|---|---|---|
-| `POST` | `/seniors/{seniorId}/alerts/{alertId}/cancel` | senior | Annule une alerte en pré-confirmation (« tout va bien »). | à venir (application web) |
-| `POST` | `/seniors/{seniorId}/help` | senior | Déclenche une demande d'aide manuelle. | à venir (application web) |
+| `POST` | `/seniors/{seniorId}/alerts/{alertId}/cancel` | senior | « Tout va bien » : annule une levée de doute en cours. `202` + `ActionAcceptedView` (`{ eventId }` du signal produit) ; l'annulation arrive ensuite en temps réel (`alert.updated`, `RESOLVED`). Levée de doute terminée → `409`. Ingestion indisponible → `503`. | ✅ |
+| `POST` | `/seniors/{seniorId}/help` | senior | « J'ai besoin d'aide » : même effet que le bouton de la montre (niveau 3). `202` + `ActionAcceptedView`. Ingestion indisponible → `503`. | ✅ |
 | `POST` | `/seniors/{seniorId}/alerts/{alertId}/acknowledge` | médical | Prise en charge → renseigne `acknowledgedAt` (idempotent ; alerte résolue → `409`). | ✅ |
 | `POST` | `/seniors/{seniorId}/alerts/{alertId}/close` | médical | Clôture après intervention → `RESOLVED`, renseigne `closedAt` (et `acknowledgedAt` s'il manquait). Seule une alerte escaladée se clôture : levée de doute en cours ou alerte déjà résolue → `409`. | ✅ |
 
@@ -159,7 +160,7 @@ Une notification remise à **une personne** (boîte de réception de la famille 
 | `GET` / `PUT` | `/seniors/{seniorId}/routines` | Lire / modifier les plages de routine (`TimeRange`). | à venir (scénario B) |
 | `GET` / `POST` / `DELETE` | `/seniors/{seniorId}/contacts` | Gérer les contacts d'urgence (`EmergencyContact` — forme à définir). | à venir |
 
-> Les actions côté senior (`cancel`, `help`) passent par l'ingestion, comme le bouton de la montre ([ADR 0007](adr/0007-actions-application-via-ingestion.md)) : l'API vérifie les droits, puis transmet l'action à Node-RED, qui la normalise en signal `CANCEL_ALERT` ou `HELP_BUTTON`. La détection ne fait pas de différence entre la montre et l'application.
+> Les actions côté senior (`cancel`, `help`) passent par l'ingestion, comme le bouton de la montre ([ADR 0007](adr/0007-actions-application-via-ingestion.md)) : l'API vérifie les droits, puis transmet l'action à Node-RED, qui la normalise en signal `CANCEL_ALERT` ou `HELP_BUTTON` (route `POST /ingest/app`, source `app-{seniorId}`). La détection ne fait pas de différence entre la montre et l'application. C'est pourquoi la réponse est `202` : l'effet (annulation, alerte de niveau 3) arrive par le temps réel.
 
 ---
 
@@ -207,7 +208,7 @@ Projection par rôle :
 
 ## 6. Conventions
 
-- **Codes de réponse** : `200` ok, `201` créé, `400` requête invalide, `401` non authentifié, `403` non autorisé (rôle ou relation), `404` introuvable, `409` conflit (ex. annuler une alerte déjà résolue).
-- **Erreurs** : corps `{ "error": { "code": "...", "message": "..." } }` (type `ApiError`) ; `code` vaut `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT` ou `INTERNAL_ERROR`.
+- **Codes de réponse** : `200` ok, `201` créé, `202` action transmise (effet asynchrone), `400` requête invalide, `401` non authentifié, `403` non autorisé (rôle ou relation), `404` introuvable, `409` conflit (ex. annuler une alerte déjà résolue), `503` service nécessaire indisponible (ex. ingestion pour les actions du senior).
+- **Erreurs** : corps `{ "error": { "code": "...", "message": "..." } }` (type `ApiError`) ; `code` vaut `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `SERVICE_UNAVAILABLE` ou `INTERNAL_ERROR`.
 - **Pagination** : `?page=…&pageSize=…` sur les listes (défaut 1 et 20, `pageSize` ≤ 100) ; réponse `Paginated<T>` = `{ items: T[], total, page, pageSize }`, du plus récent au plus ancien.
 - **Cohérence des types** : les énumérations (`status`, `reason`, `severity`…) vivent dans `shared-types`. Toute évolution s'y fait, puis se répercute ici.

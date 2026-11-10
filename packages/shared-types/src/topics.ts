@@ -33,5 +33,11 @@ export const Subscriptions = {
 /** Route HTTP de Node-RED pour la montre (hors MQTT). */
 export const WATCH_INGEST_ROUTE = '/ingest/watch';
 
+/** Route HTTP de Node-RED pour les actions de l'application web, transmises par l'API (ADR 0007). */
+export const APP_INGEST_ROUTE = '/ingest/app';
+
+/** Source « application » d'un senior dans le registre des capteurs de Node-RED (ex. app-senior-001). */
+export const appSourceId = (seniorId: string): string => `app-${seniorId}`;
+
 /** QoS MQTT utilisé pour tous les topics normalisés. */
 export const MQTT_QOS = 1;

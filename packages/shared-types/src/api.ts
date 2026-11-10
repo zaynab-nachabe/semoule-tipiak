@@ -91,6 +91,14 @@ export interface MeView extends UserSummary {
   seniors: { seniorId: TopicSafeId; fullName: string }[];
 }
 
+// ─── Actions du senior (« tout va bien », « j'ai besoin d'aide », ADR 0007) ───
+
+/** Réponse 202 : l'action a été transmise à l'ingestion ; son effet arrive ensuite en temps réel. */
+export interface ActionAcceptedView {
+  /** eventId du signal produit par l'ingestion (CANCEL_ALERT ou HELP_BUTTON). */
+  eventId: string;
+}
+
 // ─── Notifications (boîte de réception de l'appelant) ───
 
 /** Une notification remise à l'appelant (docs/format-evenements.md §9, ADR 0008). */

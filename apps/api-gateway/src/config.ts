@@ -6,6 +6,8 @@ export interface ApiConfig {
   readonly mqttClientId: string;
   readonly jwtSecret: string;
   readonly jwtExpiresIn: string;
+  /** Node-RED, qui reçoit les actions de l'application (ADR 0007). Réseau interne uniquement. */
+  readonly nodeRedUrl: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -17,6 +19,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     mqttClientId: env.MQTT_CLIENT_ID || 'api-gateway',
     jwtSecret: env.JWT_SECRET || 'dev-secret-change-me',
     jwtExpiresIn: env.JWT_EXPIRES_IN || '12h',
+    nodeRedUrl: (env.NODE_RED_URL || 'http://localhost:1880').replace(/\/$/, ''),
   };
 }
 

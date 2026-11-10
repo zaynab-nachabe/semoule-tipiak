@@ -68,6 +68,7 @@ Voir le fichier dédié : [Présentation de l'architecture](docs/Architecture.md
 | Messagerie interne | **MQTT** (le même broker Mosquitto) | Signaux normalisés, événements de domaine, alertes |
 | Stockage | **PostgreSQL** | Profils, relations et consentements, seuils, mesures, journal des alertes |
 | API | **NestJS** | REST + WebSocket vers les frontends, droits par rôle |
+| Application web | **React + Vite + TypeScript**, servie par **nginx** | Une application, trois vues (senior, famille, médical) : http://localhost:8080 |
 | Conteneurisation | **Docker Compose** | Environnement de développement |
 
 **Choix assumés**
