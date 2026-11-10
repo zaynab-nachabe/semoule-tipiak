@@ -19,6 +19,7 @@ const SENIOR = 'senior-001';
 const PRE_S = Number(process.env.PRE_CONFIRMATION_DELAY_S || 60);
 const CRIT_S = Number(process.env.CRITICAL_ESCALATION_DELAY_S || 300);
 const INACTIVITY_CHECK_S = Number(process.env.INACTIVITY_CHECK_INTERVAL_S || 60);
+const ABSENCE_GRACE_S = Number(process.env.ABSENCE_GRACE_S || 900);
 const MQTT_URL = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
 const SERVICE_TOKEN = process.env.SERVICE_TOKEN || 'dev-service-token-change-me';
 let originalThresholds = [];
@@ -93,7 +94,7 @@ await step('temps réel : les trois rôles se connectent', async () => {
   for (const role of Object.keys(inbox)) {
     const socket = io(API, { auth: { token: tokens[role] }, transports: ['websocket'] });
     sockets.push(socket);
-    for (const type of ['preconfirmation.requested', 'alert.created', 'alert.updated', 'notification.created']) {
+    for (const type of ['preconfirmation.requested', 'alert.created', 'alert.updated', 'notification.created', 'absence.changed']) {
       socket.on(type, (message) => inbox[role].push({ type, message }));
     }
     await new Promise((resolve, reject) => {
@@ -317,6 +318,38 @@ await step('remise en état : seuils d\'origine, alerte d\'inactivité clôturé
     assert.equal((await api(`/seniors/${SENIOR}/alerts/${inactivityId}/close`, { method: 'POST', token: tokens.MEDICAL })).status, 200);
   }
   await broker?.endAsync();
+});
+
+// --- Absence déclarée (ADR 0011) : l'inactivité n'est pas surveillée tant que la personne est sortie ---
+
+await step("« je m'absente » : le senior seulement, visible de la famille, et pas d'alerte d'inactivité pendant l'absence", async () => {
+  const until = new Date(Date.now() + 3600_000).toISOString();
+  assert.equal((await api(`/seniors/${SENIOR}/absence`, { method: 'POST', token: tokens.FAMILY, body: { until } })).status, 403);
+  assert.equal((await api(`/seniors/${SENIOR}/absence`, { method: 'POST', token: tokens.SENIOR, body: { until: '17:00' } })).status, 400);
+  const declared = await api(`/seniors/${SENIOR}/absence`, { method: 'POST', token: tokens.SENIOR, body: { until } });
+  assert.equal(declared.status, 201);
+  assert.equal(declared.body.until, until);
+  await waitUntil(() => inbox.FAMILY.some((m) => m.type === 'absence.changed' && m.message.absence?.until === until), 5_000, 'absence visible en temps réel');
+  assert.equal((await api(`/seniors/${SENIOR}/status`, { token: tokens.FAMILY })).body.absence?.until, until);
+
+  // Seuil d'une minute : sans l'absence, une levée de doute d'inactivité arriverait dans la minute.
+  const oneMinute = { condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 1, timeRange: null };
+  assert.equal((await api(`/seniors/${SENIOR}/thresholds`, { method: 'PUT', token: tokens.MEDICAL, body: { thresholds: [oneMinute] } })).status, 200);
+  const before = inbox.SENIOR.filter((m) => m.type === 'preconfirmation.requested').length;
+  await sleep((60 + INACTIVITY_CHECK_S + 10) * 1000);
+  assert.equal(inbox.SENIOR.filter((m) => m.type === 'preconfirmation.requested').length, before, "pas de levée de doute pendant l'absence");
+});
+
+await step("retour au domicile : un mouvement après le délai de départ termine l'absence", async () => {
+  broker = await mqtt.connectAsync(MQTT_URL, { clientId: `e2e-absence-${Date.now()}` });
+  await sleep((ABSENCE_GRACE_S + 1) * 1000);
+  await broker.publishAsync('zigbee2mqtt/pir-salon', JSON.stringify({ occupancy: true }), { qos: 1 });
+  await waitUntil(() => inbox.FAMILY.some((m) => m.type === 'absence.changed' && m.message.absence === null), 10_000, "fin de l'absence");
+  assert.equal((await api(`/seniors/${SENIOR}/status`, { token: tokens.FAMILY })).body.absence, null);
+  // Remise en état : seuils d'origine, et « je suis rentré(e) » sans absence en cours ne fait rien.
+  assert.equal((await api(`/seniors/${SENIOR}/thresholds`, { method: 'PUT', token: tokens.MEDICAL, body: { thresholds: originalThresholds } })).status, 200);
+  assert.equal((await api(`/seniors/${SENIOR}/absence`, { method: 'DELETE', token: tokens.SENIOR })).status, 204);
+  await broker.endAsync();
 });
 
 await step('application web : servie par nginx, qui relaie /api et /socket.io vers l\'API', async () => {
