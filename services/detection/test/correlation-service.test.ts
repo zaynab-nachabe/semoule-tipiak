@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { AlertStatus } from '../src/domain/entities/alert.js';
 import { CorrelationService } from '../src/domain/services/correlation-service.js';
 import { DEFAULT_FALL_DETECTION_POLICY, type FallDetectionPolicy } from '../src/domain/value-objects/fall-detection-policy.js';
+import { DEFAULT_INACTIVITY_POLICY } from '../src/domain/value-objects/inactivity-policy.js';
+import { InMemoryActivityProfileRepository } from '../src/infrastructure/in-memory-activity-profile-repository.js';
 import { InMemoryAlertRepository } from '../src/infrastructure/in-memory-alert-repository.js';
 import { CapturingPublisher, FakeTime, SequentialIds, T0, assertConformsToContract, signal } from './helpers.js';
 
@@ -16,7 +18,16 @@ describe('CorrelationService — détection de chute', () => {
   let service: CorrelationService;
 
   const build = (policy: FallDetectionPolicy = POLICY) =>
-    new CorrelationService({ alerts, publisher, clock: time, scheduler: time, ids: new SequentialIds(), policy });
+    new CorrelationService({
+      alerts,
+      profiles: new InMemoryActivityProfileRepository(),
+      publisher,
+      clock: time,
+      scheduler: time,
+      ids: new SequentialIds(),
+      policy,
+      inactivityPolicy: DEFAULT_INACTIVITY_POLICY,
+    });
 
   beforeEach(() => {
     time = new FakeTime();
@@ -320,11 +331,13 @@ describe('FallDetectionPolicy', () => {
   const build = (policy: FallDetectionPolicy) => () =>
     new CorrelationService({
       alerts: new InMemoryAlertRepository(),
+      profiles: new InMemoryActivityProfileRepository(),
       publisher: new CapturingPublisher(),
       clock: new FakeTime(),
       scheduler: new FakeTime(),
       ids: new SequentialIds(),
       policy,
+      inactivityPolicy: DEFAULT_INACTIVITY_POLICY,
     });
 
   it('les valeurs par défaut sont celles des ADR', () => {

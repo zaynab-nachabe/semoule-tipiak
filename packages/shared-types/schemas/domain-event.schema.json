@@ -55,17 +55,24 @@
     "AlertId": { "type": "string", "minLength": 1 },
     "AlertReason": { "type": "string", "enum": ["FALL_DETECTED", "PROLONGED_INACTIVITY", "HELP_REQUESTED"] },
     "Severity": { "type": "string", "enum": ["SYSTEM", "PRE_ALERT", "WARNING", "CRITICAL"] },
-    "EscalationCause": { "type": "string", "enum": ["NO_RESPONSE", "SENIOR_CONFIRMED", "IMMEDIATE", "NO_RECOVERY"] },
+    "EscalationCause": { "type": "string", "enum": ["NO_RESPONSE", "SENIOR_CONFIRMED", "IMMEDIATE", "NO_RECOVERY", "NO_HEART_SIGNAL"] },
     "CancellationCause": { "type": "string", "enum": ["SENIOR_CANCELED", "ACTIVITY_RESUMED"] },
     "TriggeringEventIds": {
       "type": "array",
-      "minItems": 1,
       "items": { "$ref": "#/definitions/Uuid" }
+    },
+    "TriggeredUnlessInactivity": {
+      "description": "Au moins un signal déclencheur, sauf pour une inactivité (une absence de signal peut n'avoir aucun signal à citer).",
+      "type": "object",
+      "if": { "type": "object", "properties": { "reason": { "type": "string", "const": "PROLONGED_INACTIVITY" } } },
+      "then": true,
+      "else": { "type": "object", "properties": { "triggeringEventIds": { "type": "array", "minItems": 1 } } }
     },
     "PreConfirmationRequestedPayload": {
       "type": "object",
       "required": ["alertId", "reason", "requestedAt", "expiresAt", "triggeringEventIds"],
       "additionalProperties": false,
+      "allOf": [{ "$ref": "#/definitions/TriggeredUnlessInactivity" }],
       "properties": {
         "alertId": { "$ref": "#/definitions/AlertId" },
         "reason": { "$ref": "#/definitions/AlertReason" },
@@ -98,6 +105,7 @@
       "type": "object",
       "required": ["alertId", "reason", "severity", "escalationCause", "triggeringEventIds"],
       "additionalProperties": false,
+      "allOf": [{ "$ref": "#/definitions/TriggeredUnlessInactivity" }],
       "properties": {
         "alertId": { "$ref": "#/definitions/AlertId" },
         "reason": { "$ref": "#/definitions/AlertReason" },

@@ -142,7 +142,7 @@ Une notification remise à **une personne** (boîte de réception de la famille 
 | `GET` | `/seniors/{seniorId}/alerts` | senior, famille, médical | `Paginated<AlertView>` (historique) | ✅ |
 | `GET` | `/seniors/{seniorId}/alerts/{alertId}` | senior, famille, médical | `AlertView` | ✅ |
 | `GET` | `/seniors/{seniorId}/measurements?type=HEART_RATE&from=…&to=…` | médical | `Paginated<MeasurementPointView>` (`type` : `HEART_RATE`, `FALL_IMPACT` ou `SENSOR_HEARTBEAT`) | ✅ |
-| `GET` | `/seniors/{seniorId}/activity?from=…&to=…` | famille, médical | Activité agrégée (forme à définir) | à venir (scénario B) |
+| `GET` | `/seniors/{seniorId}/activity?from=…&to=…` | famille, médical | Activité agrégée (forme à définir) | non réalisé (tendances d'activité) |
 | `GET` | `/seniors/{seniorId}/sensors` | famille, médical | Liste de `SensorHealthView` | à venir (surveillance des capteurs) |
 
 ### Actions
@@ -156,9 +156,13 @@ Une notification remise à **une personne** (boîte de réception de la famille 
 ### Configuration (médical uniquement)
 | Méthode | Chemin | Description | Statut |
 |---|---|---|---|
-| `GET` / `PUT` | `/seniors/{seniorId}/thresholds` | Lire / modifier les seuils (`ToleranceThreshold`). | à venir (scénario B) |
-| `GET` / `PUT` | `/seniors/{seniorId}/routines` | Lire / modifier les plages de routine (`TimeRange`). | à venir (scénario B) |
+| `GET` | `/seniors/{seniorId}/thresholds` | Profil d'activité : `ActivityProfile` (`{ seniorId, timeZone, thresholds: ToleranceThreshold[] }`, §10 de [format-evenements.md](format-evenements.md)). | ✅ |
+| `PUT` | `/seniors/{seniorId}/thresholds` | Remplace tous les seuils : corps `ThresholdsUpdateRequest` (`{ thresholds }`, 0 à 10 seuils, au plus un sans plage horaire) → `ActivityProfile`. Seuil invalide → `400`. L'API publie aussitôt le profil sur `profiles/{seniorId}` : la détection l'applique sans relire la base ([ADR 0010](adr/0010-detection-inactivite.md)). | ✅ |
 | `GET` / `POST` / `DELETE` | `/seniors/{seniorId}/contacts` | Gérer les contacts d'urgence (`EmergencyContact` — forme à définir). | à venir |
+
+> Les plages de routine du DDD (`TimeRange`) sont portées par les seuils eux-mêmes (`timeRange`), il n'y a donc pas d'endpoint `/routines` séparé.
+>
+> **Point d'accès interne** (pas pour l'application) : `GET /internal/activity-profiles` renvoie tous les profils à la détection, au démarrage. Il exige l'en-tête `x-service-token` (clé partagée `SERVICE_TOKEN`), sinon `401`.
 
 > Les actions côté senior (`cancel`, `help`) passent par l'ingestion, comme le bouton de la montre ([ADR 0007](adr/0007-actions-application-via-ingestion.md)) : l'API vérifie les droits, puis transmet l'action à Node-RED, qui la normalise en signal `CANCEL_ALERT` ou `HELP_BUTTON` (route `POST /ingest/app`, source `app-{seniorId}`). La détection ne fait pas de différence entre la montre et l'application. C'est pourquoi la réponse est `202` : l'effet (annulation, alerte de niveau 3) arrive par le temps réel.
 
@@ -199,7 +203,7 @@ Projection par rôle :
 | Fréquence cardiaque (valeur/courbes) | ✅ (valeur du jour) | — | ✅ (brut + historique) |
 | Activité / tendances | résumé personnel | résumé | détaillé |
 | État des capteurs | — | ✅ (simplifié) | ✅ |
-| Seuils, routines, contacts (écriture) | — | — | ✅ |
+| Seuils d'inactivité (lecture et écriture), contacts | — | — | ✅ |
 | Annuler une alerte, demander de l'aide | ✅ | — | — |
 
 > La famille ne reçoit jamais les données médicales détaillées (fréquence cardiaque brute, causes cliniques). C'est la minimisation des données (RGPD) appliquée au niveau de l'API.

@@ -3,7 +3,7 @@
 // Idempotent : relancé à chaque démarrage du conteneur sans créer de doublons.
 // Le senior a l'identifiant "senior-001", celui qu'utilisent les capteurs (registre de Node-RED).
 
-import { ConsentStatus, PrismaClient, Role, Severity } from '@prisma/client';
+import { ConsentStatus, PrismaClient, Role } from '@prisma/client';
 
 export const DEMO_SENIOR_ID = 'senior-001';
 
@@ -46,8 +46,12 @@ async function seed(prisma: PrismaClient): Promise<void> {
   }
 
   if ((await prisma.toleranceThreshold.count({ where: { seniorId: DEMO_SENIOR_ID } })) === 0) {
-    await prisma.toleranceThreshold.create({
-      data: { seniorId: DEMO_SENIOR_ID, condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, severity: Severity.WARNING },
+    // Jour : 2 h sans activité ; nuit : 10 h (ADR 0010). Modifiables par l'équipe médicale.
+    await prisma.toleranceThreshold.createMany({
+      data: [
+        { seniorId: DEMO_SENIOR_ID, condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, startTime: '07:00', endTime: '22:00' },
+        { seniorId: DEMO_SENIOR_ID, condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 600, startTime: '22:00', endTime: '07:00' },
+      ],
     });
   }
   if ((await prisma.emergencyContact.count({ where: { seniorId: DEMO_SENIOR_ID } })) === 0) {

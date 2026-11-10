@@ -35,6 +35,8 @@ export const EscalationCause = {
   SENIOR_CONFIRMED: 'SENIOR_CONFIRMED',
   IMMEDIATE: 'IMMEDIATE',
   NO_RECOVERY: 'NO_RECOVERY',
+  /** Inactivité sans réponse et sans fréquence cardiaque récente et normale (ADR 0010). */
+  NO_HEART_SIGNAL: 'NO_HEART_SIGNAL',
 } as const;
 export type EscalationCause = (typeof EscalationCause)[keyof typeof EscalationCause];
 
@@ -49,6 +51,7 @@ export interface PreConfirmationRequestedPayload {
   reason: AlertReason;
   requestedAt: IsoUtcTimestamp;
   expiresAt: IsoUtcTimestamp;
+  /** Signaux à l'origine du doute. Peut être vide pour une inactivité (aucun signal depuis le démarrage). */
   triggeringEventIds: Uuid[];
 }
 
@@ -70,6 +73,7 @@ export interface CriticalAlertGeneratedPayload {
   reason: AlertReason;
   severity: Severity;
   escalationCause: EscalationCause;
+  /** Peut être vide pour une inactivité (aucun signal depuis le démarrage) ; au moins un sinon. */
   triggeringEventIds: Uuid[];
 }
 

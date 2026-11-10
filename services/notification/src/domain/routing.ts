@@ -64,10 +64,20 @@ export function describe(reason: AlertReason, cause: EscalationCause, severity: 
       case 'SENIOR_CONFIRMED':
         return { title: "Chute confirmée, demande d'aide", message: "La personne a confirmé avoir chuté et demande de l'aide." };
       case 'IMMEDIATE':
+      case 'NO_HEART_SIGNAL': // cause propre à l'inactivité : texte générique si elle arrivait pour une chute
         return { title: 'Chute détectée', message: 'Une chute a été détectée. Prenez contact avec la personne.' };
     }
   }
-  // PROLONGED_INACTIVITY
+  // PROLONGED_INACTIVITY (ADR 0010)
+  if (cause === 'SENIOR_CONFIRMED') {
+    return { title: "Inactivité : demande d'aide", message: "Après une longue période sans activité, la personne a demandé de l'aide. Prenez contact avec elle sans attendre." };
+  }
+  if (cause === 'NO_HEART_SIGNAL') {
+    return {
+      title: 'Inactivité prolongée, sans réponse',
+      message: "Aucune activité depuis une durée inhabituelle, pas de réponse à la demande de confirmation, et la montre ne donne pas de nouvelles. Une intervention est nécessaire.",
+    };
+  }
   return severity === 'CRITICAL'
     ? { title: 'Inactivité prolongée : urgence', message: "Aucune activité depuis une durée inhabituelle et aucun signe de la personne. Une intervention est nécessaire." }
     : { title: 'Inactivité inhabituelle, sans réponse', message: "Aucune activité depuis une durée inhabituelle et pas de réponse à la demande de confirmation. Prenez de ses nouvelles." };

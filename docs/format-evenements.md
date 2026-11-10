@@ -2,7 +2,7 @@
 
 Ce document définit le **contrat de données** entre la passerelle d'ingestion (Node-RED) et le reste du système (détection, stockage). Tout signal entrant, quel que soit le capteur et son protocole d'origine (MQTT ou HTTP), est normalisé par Node-RED vers ce format unique avant d'être transmis.
 
-Il couvre quatre familles de messages :
+Il couvre cinq familles de messages :
 
 | Famille | Produit par | Consommé par | Section |
 |---|---|---|---|
@@ -10,6 +10,7 @@ Il couvre quatre familles de messages :
 | **Événements de domaine** (pré-confirmation, alerte critique) | Détection | Notification, API, appli senior | §6 |
 | **Messages rejetés** (file de rejet / DLQ) | Ingestion | Supervision, débogage | §7 |
 | **Notifications** (`NotificationRequested`) | Notification | API (remise aux personnes) | §9 |
+| **Profils d'activité** (`ActivityProfileUpdated`) | API (seuils modifiés par le médical) | Détection | §10 |
 
 Les topics MQTT sur lesquels circulent ces messages sont définis dans [topics-mqtt.md](topics-mqtt.md). Les versions lisibles par machine (JSON Schema + types TypeScript) sont décrites au §8.
 
@@ -268,16 +269,17 @@ Même principe que les signaux, sans `sensorId` (l'émetteur est toujours le ser
 | 0 | `SYSTEM` | Événement technique (batterie faible, capteur muet) | Événements de supervision des capteurs (à venir) | Indicateur dans la vue médicale, journal |
 | 1 | `PRE_ALERT` | Levée de doute en cours | Implicite pour `PreConfirmationRequested` | Vibration de la montre, bandeau « Tout va bien ? » avec compte à rebours dans la vue senior |
 | 2 | `WARNING` | Incident non infirmé : la personne n'a pas répondu | `CriticalAlertGenerated` (`NO_RESPONSE`) | Alerte dans la vue famille, trace pour l'équipe médicale |
-| 3 | `CRITICAL` | Urgence confirmée | `CriticalAlertGenerated` (`SENIOR_CONFIRMED`, `IMMEDIATE`, `NO_RECOVERY`) | Alerte urgente dans les vues médicale et famille. Dans un déploiement réel, ce niveau déclencherait un appel ou l'envoi de secours (hors périmètre du projet). |
+| 3 | `CRITICAL` | Urgence confirmée | `CriticalAlertGenerated` (`SENIOR_CONFIRMED`, `IMMEDIATE`, `NO_RECOVERY`, `NO_HEART_SIGNAL`) | Alerte urgente dans les vues médicale et famille. Dans un déploiement réel, ce niveau déclencherait un appel ou l'envoi de secours (hors périmètre du projet). |
 
 **`EscalationCause`** — pourquoi l'alerte est devenue critique :
 
 | Valeur | Niveau | Signification |
 |---|---|---|
-| `NO_RESPONSE` | 2 | La pré-confirmation a expiré sans réponse ni signe de relèvement. |
+| `NO_RESPONSE` | 2 | La pré-confirmation a expiré sans réponse ni signe de relèvement (chute), ou sans réponse ni activité alors que la fréquence cardiaque récente est normale (inactivité). |
 | `SENIOR_CONFIRMED` | 3 | La personne a confirmé avoir besoin d'aide (`HELP_BUTTON` pendant la pré-confirmation ou après une alerte de niveau 2). |
 | `IMMEDIATE` | 3 | Escalade directe, sans pré-confirmation (demande d'aide spontanée). |
-| `NO_RECOVERY` | 3 | Après une alerte de niveau 2, toujours aucun signe de relèvement au bout d'un délai supplémentaire. |
+| `NO_RECOVERY` | 3 | Après une alerte de niveau 2, toujours aucun signe de relèvement (chute) ni aucune activité (inactivité) au bout d'un délai supplémentaire. |
+| `NO_HEART_SIGNAL` | 3 | Inactivité : la pré-confirmation a expiré sans réponse, et la montre ne donne pas de fréquence cardiaque récente et normale (montre muette, valeur nulle ou anormale). Escalade directe au niveau 3 ([ADR 0010](adr/0010-detection-inactivite.md)). |
 
 Une même alerte peut donc être publiée **deux fois** en `CriticalAlertGenerated` : d'abord en `WARNING`, puis en `CRITICAL` (même `alertId`, `eventId` différent). Les abonnés gardent la dernière gravité reçue pour un `alertId`.
 
@@ -304,7 +306,7 @@ Une même alerte peut donc être publiée **deux fois** en `CriticalAlertGenerat
 | `reason` | `AlertReason` | Motif de la suspicion. |
 | `requestedAt` | string (ISO 8601, UTC) | Début de la pré-confirmation. |
 | `expiresAt` | string (ISO 8601, UTC) | Fin du délai de réponse (ex. 60 s après, voir scénario A du DDD). |
-| `triggeringEventIds` | string[] (UUID) | `eventId` des signaux qui ont déclenché la suspicion (traçabilité). |
+| `triggeringEventIds` | string[] (UUID) | `eventId` des signaux qui ont déclenché la suspicion (traçabilité). Pour une inactivité : le dernier signal d'activité reçu, ou une liste **vide** si aucun signal n'est arrivé depuis le démarrage de la détection (une absence de signal n'a pas toujours de signal à citer). Au moins un dans les autres cas. |
 
 ### `PreConfirmationCanceled`
 ```json
@@ -350,7 +352,7 @@ Une même alerte peut donc être publiée **deux fois** en `CriticalAlertGenerat
 | `reason` | `AlertReason` | Motif de l'alerte. |
 | `severity` | `Severity` | Gravité. |
 | `escalationCause` | `EscalationCause` | Pourquoi l'alerte est devenue critique. |
-| `triggeringEventIds` | string[] (UUID) | Signaux à l'origine de l'alerte. |
+| `triggeringEventIds` | string[] (UUID) | Signaux à l'origine de l'alerte (même règle que ci-dessus : vide possible pour une inactivité seulement). |
 
 > **Les destinataires ne sont pas dans l'événement.** Conformément au DDD, c'est le service de notification qui les choisit à partir de `reason`, `severity` et des contacts du senior (PostgreSQL). La détection n'a pas à connaître la famille ni l'équipe médicale.
 
@@ -369,6 +371,19 @@ FALL_IMPACT ─► PreConfirmationRequested ─┬─► CANCEL_ALERT ou séquen
 
 HELP_BUTTON (hors de toute alerte en cours) ─────────────────────► CriticalAlertGenerated (CRITICAL, IMMEDIATE)
 ```
+
+**Inactivité prolongée** ([ADR 0010](adr/0010-detection-inactivite.md)) : la détection compare le temps écoulé depuis la dernière activité (`PIR_MOTION` ou changement de `PRESSURE_PLATE`, dans n'importe quelle pièce) au seuil du profil (§10) qui s'applique à l'heure locale.
+
+```
+plus d'activité depuis le seuil ─► PreConfirmationRequested (PROLONGED_INACTIVITY) ─┬─► CANCEL_ALERT ou une activité ─► PreConfirmationCanceled
+  (niveau 1)                                                                          ├─► HELP_BUTTON ─────────────────► CriticalAlertGenerated (CRITICAL, SENIOR_CONFIRMED)
+                                                                                      └─► délai expiré ─► PreConfirmationTimeoutExpired, puis selon la fréquence cardiaque :
+                                                                                            ├─ récente et normale ─► CriticalAlertGenerated (WARNING, NO_RESPONSE)
+                                                                                            │                          puis (CRITICAL, NO_RECOVERY) sans activité après le délai
+                                                                                            └─ absente ou anormale ─► CriticalAlertGenerated (CRITICAL, NO_HEART_SIGNAL)
+```
+
+Contrairement à la chute, **une seule activité suffit** à lever le doute : la personne bouge, elle n'est pas inactive. Une seule alerte à la fois par senior : pas d'alerte d'inactivité pendant une alerte de chute.
 
 Si la personne a montré une **activité** sans encore la **stabilité** au moment où le délai de pré-confirmation expire, la décision est reportée jusqu'à la fin du délai de confirmation de la séquence de relèvement : elle peut encore se relever avant l'alerte.
 
@@ -411,6 +426,7 @@ Ce document est la référence lisible. Ses équivalents exécutables sont dans 
 | `schemas/domain-event.schema.json` | JSON Schema des événements de domaine (§6) | Tests, débogage |
 | `schemas/rejected-message.schema.json` | JSON Schema d'un message rejeté (§7) | Tests, débogage |
 | `schemas/notification.schema.json` | JSON Schema d'une notification (§9) | API, à la réception |
+| `schemas/activity-profile.schema.json` | JSON Schema d'un profil d'activité et de son message de mise à jour (§10) | Détection, à la réception ; API, à l'écriture |
 | `src/*.ts` | Types TypeScript et constantes (enums, noms de topics) | Services TypeScript (détection, notification, API) |
 
 Les schémas n'utilisent pas le mot-clé `format` (remplacé par des `pattern`) pour fonctionner avec n'importe quel validateur sans extension.
@@ -464,3 +480,49 @@ Une alerte qui passe du niveau 2 au niveau 3 produit donc deux séries de notifi
 | `payload.priority` | `INFO` \| `NORMAL` \| `URGENT` | Priorité d'affichage. |
 | `payload.severity`, `payload.reason`, `payload.escalationCause` | voir §6 | Repris de l'alerte. |
 | `payload.title`, `payload.message` | string | Texte destiné aux personnes, en français. |
+
+---
+
+## 10. Profils d'activité (seuils d'inactivité)
+
+Le profil d'activité d'un senior (DDD : `ActivityProfile`) contient les **seuils de tolérance** configurés par l'équipe médicale : au-delà de la durée indiquée sans activité, la détection lève le doute. Chaque seuil peut porter une **plage horaire** (heure locale du logement), pour distinguer le jour de la nuit ([ADR 0010](adr/0010-detection-inactivite.md)).
+
+**Livraison à la détection** : au démarrage, la détection lit tous les profils à l'API (`GET /internal/activity-profiles`, en-tête `x-service-token`) ; ensuite, à chaque modification par le médical, l'API publie le profil complet sur `profiles/{seniorId}`. La détection garde les profils en mémoire et ne lit jamais la base.
+
+### `ActivityProfileUpdated`
+
+```json
+{
+  "eventId": "e5f6a7b8-0001-4000-8000-000000000401",
+  "seniorId": "senior-001",
+  "type": "ActivityProfileUpdated",
+  "timestamp": "2026-01-15T09:00:00.000Z",
+  "payload": {
+    "seniorId": "senior-001",
+    "timeZone": "Europe/Paris",
+    "thresholds": [
+      { "condition": "MAX_INACTIVITY_MINUTES", "durationInMinutes": 120, "timeRange": { "startTime": "07:00", "endTime": "22:00" } },
+      { "condition": "MAX_INACTIVITY_MINUTES", "durationInMinutes": 600, "timeRange": { "startTime": "22:00", "endTime": "07:00" } }
+    ]
+  }
+}
+```
+
+| Champ | Type | Description |
+|---|---|---|
+| `eventId` | string (UUID) | Identifiant du message ; la détection ignore un doublon. |
+| `seniorId` | string | Personne concernée (identique à `payload.seniorId`). |
+| `type` | `ActivityProfileUpdated` | Seul type de message de profil. |
+| `timestamp` | string (ISO 8601, UTC) | Moment de la modification. |
+| `payload.timeZone` | string | Fuseau horaire IANA du logement (ex. `Europe/Paris`), pour lire les plages horaires. |
+| `payload.thresholds[]` | `ToleranceThreshold` | 0 à 10 seuils. Un profil sans seuil désactive la détection d'inactivité pour ce senior. |
+| `…condition` | `MAX_INACTIVITY_MINUTES` | Seule condition gérée : durée maximale sans activité. |
+| `…durationInMinutes` | entier, 1 à 1440 | Durée tolérée. |
+| `…timeRange` | `{ startTime, endTime }` ou `null` | Plage `HH:MM` → `HH:MM` en heure locale ; elle peut passer minuit (`22:00` → `07:00`). `null` : seuil par défaut, pour les heures couvertes par aucune plage. |
+
+**Choix du seuil** à un instant donné :
+
+1. si la personne est **au lit** (dernière bande de pression du lit à l'état `PRESSED`), c'est un repos normal : le seuil **le plus long** du profil s'applique ;
+2. sinon, parmi les seuils dont la plage contient l'heure locale, le **plus court** (le plus prudent) ;
+3. sinon, le seuil sans plage, s'il existe ; sinon, pas de surveillance à cette heure.
+

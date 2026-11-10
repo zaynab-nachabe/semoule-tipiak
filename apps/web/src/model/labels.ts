@@ -30,9 +30,10 @@ export const severityLabel: Record<Severity, string> = {
 
 export const escalationCauseLabel: Record<EscalationCause, string> = {
   NO_RESPONSE: 'Pas de réponse à la levée de doute',
-  NO_RECOVERY: 'Aucun signe de relèvement',
+  NO_RECOVERY: 'Aucun signe de relèvement ni d’activité',
   SENIOR_CONFIRMED: 'Confirmée par la personne',
   IMMEDIATE: "Demande d'aide directe",
+  NO_HEART_SIGNAL: 'Pas de réponse ni de fréquence cardiaque rassurante',
 };
 
 export const cancellationCauseLabel: Record<CancellationCause, string> = {
@@ -63,4 +64,12 @@ export function formatAgo(iso: string, now: Date = new Date()): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `il y a ${hours} h`;
   return `il y a ${Math.floor(hours / 24)} j`;
+}
+
+/** « 45 min », « 2 h », « 1 h 30 ». */
+export function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`;
 }

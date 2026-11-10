@@ -427,3 +427,52 @@ button:focus-visible {
     min-width: 100%;
   }
 }
+
+/* --- Seuils d'inactivité (médical) --- */
+.small {
+  font-size: 0.88rem;
+}
+.thresholds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.thresholds li {
+  display: flex;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+}
+.thresholds-form {
+  display: grid;
+  gap: 0.6rem;
+}
+.threshold-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  margin: 0;
+}
+.threshold-row input[type='number'] {
+  width: 5.5rem;
+}
+.threshold-row input {
+  font: inherit;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}

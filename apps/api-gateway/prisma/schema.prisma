@@ -57,6 +57,7 @@ enum EscalationCause {
   SENIOR_CONFIRMED
   IMMEDIATE
   NO_RECOVERY
+  NO_HEART_SIGNAL
 }
 
 enum CancellationCause {
@@ -106,6 +107,8 @@ model Senior {
   personId  String   @unique
   person    Person   @relation(fields: [personId], references: [id])
   createdAt DateTime @default(now())
+  /// Fuseau horaire IANA du logement : les plages des seuils d'inactivité sont en heure locale (ADR 0010).
+  timeZone  String   @default("Europe/Paris")
 
   // Qui suit ce senior (familles, soignants) via des relations consenties.
   relationships CareRelationship[]   @relation("TrackedSenior")
@@ -158,9 +161,12 @@ model ToleranceThreshold {
   seniorId String
   senior   Senior @relation(fields: [seniorId], references: [id])
 
-  condition         String // ex. "MAX_INACTIVITY_MINUTES"
+  condition         String // "MAX_INACTIVITY_MINUTES", seule condition gérée
   durationInMinutes Int
-  severity          Severity
+  /// Plage horaire en heure locale "HH:MM" (les deux ou aucune) ; elle peut passer minuit. Sans plage : seuil par défaut.
+  /// Le niveau de l'alerte n'est pas porté par le seuil : il dépend de la fréquence cardiaque (ADR 0010).
+  startTime         String?
+  endTime           String?
 
   @@map("tolerance_thresholds")
 }

@@ -4,6 +4,7 @@
 import type { IsoUtcTimestamp, TopicSafeId } from './common.js';
 import type { AlertReason, CancellationCause, EscalationCause, PreConfirmationRequestedPayload, Severity } from './domain-events.js';
 import type { NotificationPriority } from './notifications.js';
+import type { ToleranceThreshold } from './profiles.js';
 
 export const Role = { SENIOR: 'SENIOR', FAMILY: 'FAMILY', MEDICAL: 'MEDICAL' } as const;
 export type Role = (typeof Role)[keyof typeof Role];
@@ -97,6 +98,13 @@ export interface MeView extends UserSummary {
 export interface ActionAcceptedView {
   /** eventId du signal produit par l'ingestion (CANCEL_ALERT ou HELP_BUTTON). */
   eventId: string;
+}
+
+// ─── Seuils d'inactivité (médical, ADR 0010) ───
+
+/** Corps de PUT /seniors/{seniorId}/thresholds : remplace tous les seuils du senior. */
+export interface ThresholdsUpdateRequest {
+  thresholds: ToleranceThreshold[];
 }
 
 // ─── Notifications (boîte de réception de l'appelant) ───
