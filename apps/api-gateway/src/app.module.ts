@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { AbsenceController } from './absence/absence.controller';
+import { AbsenceService } from './absence/absence.service';
 import { AccessService } from './access/access.service';
 import { IngestionClient } from './actions/ingestion-client';
 import { AlertsService } from './alerts/alerts.service';
@@ -22,7 +24,7 @@ const config = loadConfig();
 
 @Module({
   imports: [JwtModule.register({ secret: config.jwtSecret, signOptions: { expiresIn: config.jwtExpiresIn as `${number}h` } })],
-  controllers: [AuthController, SeniorsController, ThresholdsController, InternalController, NotificationsController, HealthController],
+  controllers: [AuthController, SeniorsController, AbsenceController, ThresholdsController, InternalController, NotificationsController, HealthController],
   providers: [
     { provide: API_CONFIG, useValue: config },
     PrismaService,
@@ -36,6 +38,7 @@ const config = loadConfig();
     EventIngestionService,
     IngestionClient,
     ProfilesService,
+    AbsenceService,
     ServiceTokenGuard,
   ],
 })

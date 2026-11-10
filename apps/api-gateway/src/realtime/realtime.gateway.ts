@@ -63,6 +63,11 @@ export class RealtimeGateway implements OnGatewayConnection {
     }
   }
 
+  /** Absence déclarée ou terminée : à tous ceux qui ont accès au senior (ADR 0011). */
+  publishAbsence(message: RealtimeMessageByType['absence.changed']): void {
+    this.server.to(room(message.seniorId)).emit('absence.changed', message);
+  }
+
   /** Notifications : chacune à son seul destinataire. */
   publishNotifications(delivered: readonly DeliveredNotification[]): void {
     for (const { recipientId, view } of delivered) {

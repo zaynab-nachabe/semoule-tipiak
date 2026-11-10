@@ -10,6 +10,8 @@ export interface ApiConfig {
   readonly nodeRedUrl: string;
   /** Clé partagée avec la détection pour GET /internal/activity-profiles (ADR 0010). */
   readonly serviceToken: string;
+  /** Un mouvement au domicile met fin à l'absence s'il arrive plus de ce délai après le départ (ADR 0011). */
+  readonly absenceGraceMs: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -22,6 +24,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     jwtSecret: env.JWT_SECRET || 'dev-secret-change-me',
     jwtExpiresIn: env.JWT_EXPIRES_IN || '12h',
     serviceToken: env.SERVICE_TOKEN || 'dev-service-token-change-me',
+    absenceGraceMs: Math.round(Number(env.ABSENCE_GRACE_S || 900) * 1000),
     nodeRedUrl: (env.NODE_RED_URL || 'http://localhost:1880').replace(/\/$/, ''),
   };
 }

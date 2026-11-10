@@ -60,6 +60,8 @@ export const Capability = {
   /** « Tout va bien » et « J'ai besoin d'aide » : le senior seulement, pour lui-même. */
   CANCEL_ALERT: ['SENIOR'],
   REQUEST_HELP: ['SENIOR'],
+  /** « Je m'absente » / « je suis rentré(e) » : le senior seulement (ADR 0011). */
+  DECLARE_ABSENCE: ['SENIOR'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export function hasCapability(role: Role, capability: keyof typeof Capability): boolean {

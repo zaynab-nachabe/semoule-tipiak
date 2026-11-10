@@ -122,6 +122,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       NODE_RED_URL: http://node-red:1880   # actions du senior (« tout va bien », « aide »), ADR 0007
       SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}   # clé de la détection pour /internal (ADR 0010)
+      ABSENCE_GRACE_S: ${ABSENCE_GRACE_S:-900}   # un mouvement au domicile termine l'absence après ce délai (ADR 0011)
       PORT: 3000
     ports:
       - "3000:3000"
