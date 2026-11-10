@@ -1,4 +1,4 @@
-// Scénario de bout en bout sur la pile lancée par docker compose (API, détection, Node-RED, broker, base).
+// Scénario de bout en bout sur la pile lancée par docker compose (API, détection, notification, Node-RED, broker, base, web).
 // Une chute est envoyée par la « montre » (HTTP vers Node-RED) ; on vérifie ce que voit chaque rôle,
 // en temps réel (WebSocket) et en consultation (REST), ainsi que les règles d'accès.
 //
@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { io } = require('socket.io-client');
+const mqtt = require('mqtt');
 
 const API = process.env.API_URL ?? 'http://localhost:3000';
 const NODE_RED = process.env.NODE_RED_URL ?? 'http://localhost:1880';
@@ -17,6 +18,12 @@ const WEB = process.env.WEB_URL ?? 'http://localhost:8080';
 const SENIOR = 'senior-001';
 const PRE_S = Number(process.env.PRE_CONFIRMATION_DELAY_S || 60);
 const CRIT_S = Number(process.env.CRITICAL_ESCALATION_DELAY_S || 300);
+const INACTIVITY_CHECK_S = Number(process.env.INACTIVITY_CHECK_INTERVAL_S || 60);
+const MQTT_URL = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
+const SERVICE_TOKEN = process.env.SERVICE_TOKEN || 'dev-service-token-change-me';
+let originalThresholds = [];
+let inactivityId;
+let broker;
 
 const results = [];
 const step = async (name, fn) => {
@@ -244,6 +251,72 @@ await step('« j\'ai besoin d\'aide » dans l\'application : alerte de niveau 3 
   assert.equal(signals.escalationCause, 'IMMEDIATE');
   // Remise à zéro pour la suite : le médical clôture la demande d'aide.
   assert.equal((await api(`/seniors/${SENIOR}/alerts/${helpAlertId}/close`, { method: 'POST', token: tokens.MEDICAL })).status, 200);
+});
+
+// --- Inactivité (ADR 0010) : seuils lus par la détection à l'API, puis mis à jour par message ---
+
+await step('seuils d\'inactivité : médical uniquement ; la détection les lit avec sa clé de service', async () => {
+  assert.equal((await api(`/seniors/${SENIOR}/thresholds`, { token: tokens.FAMILY })).status, 403);
+  const { status, body } = await api(`/seniors/${SENIOR}/thresholds`, { token: tokens.MEDICAL });
+  assert.equal(status, 200);
+  assert.equal(body.timeZone, 'Europe/Paris');
+  originalThresholds = body.thresholds;
+  assert.equal((await api('/internal/activity-profiles')).status, 401, 'clé de service obligatoire');
+  const internal = await fetch(`${API}/internal/activity-profiles`, { headers: { 'x-service-token': SERVICE_TOKEN } });
+  assert.equal(internal.status, 200);
+  assert.ok((await internal.json()).some((p) => p.seniorId === SENIOR));
+});
+
+await step('inactivité : seuil d\'une minute fixé par le médical, levée de doute puis niveau 2 (fréquence cardiaque normale)', async () => {
+  broker = await mqtt.connectAsync(MQTT_URL, { clientId: `e2e-${Date.now()}` });
+  const motion = () => broker.publishAsync('zigbee2mqtt/pir-salon', JSON.stringify({ occupancy: true }), { qos: 1 });
+  await motion(); // une activité : le compte repart de maintenant
+  const heart = await fetch(`${NODE_RED}/ingest/watch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sensorId: 'watch-001', event: 'HEART_RATE', value: 68 }),
+  });
+  assert.equal(heart.status, 202);
+
+  const oneMinute = { condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 1, timeRange: null };
+  assert.equal((await api(`/seniors/${SENIOR}/thresholds`, { method: 'PUT', token: tokens.FAMILY, body: { thresholds: [oneMinute] } })).status, 403);
+  const invalid = await api(`/seniors/${SENIOR}/thresholds`, { method: 'PUT', token: tokens.MEDICAL, body: { thresholds: [{ ...oneMinute, durationInMinutes: 0 }] } });
+  assert.equal(invalid.status, 400);
+  const put = await api(`/seniors/${SENIOR}/thresholds`, { method: 'PUT', token: tokens.MEDICAL, body: { thresholds: [oneMinute] } });
+  assert.equal(put.status, 200);
+  assert.deepEqual(put.body.thresholds, [oneMinute]);
+
+  const isInactivity = (m) => m.type === 'preconfirmation.requested' && m.message.reason === 'PROLONGED_INACTIVITY';
+  await waitUntil(() => inbox.SENIOR.some(isInactivity), (60 + INACTIVITY_CHECK_S + 20) * 1000, 'levée de doute d\'inactivité');
+  inactivityId = inbox.SENIOR.find(isInactivity).message.alertId;
+  await waitUntil(
+    () => inbox.MEDICAL.some((m) => m.type === 'alert.created' && m.message.alertId === inactivityId),
+    (PRE_S + 10) * 1000,
+    'alerte d\'inactivité de niveau 2',
+  );
+  const medical = inbox.MEDICAL.find((m) => m.type === 'alert.created' && m.message.alertId === inactivityId).message;
+  assert.deepEqual([medical.reason, medical.severity, medical.escalationCause], ['PROLONGED_INACTIVITY', 'WARNING', 'NO_RESPONSE']);
+  await waitUntil(
+    () => inbox.FAMILY.some((m) => m.type === 'notification.created' && m.message.alertId === inactivityId && m.message.priority === 'NORMAL'),
+    5_000,
+    'notification de la famille',
+  );
+
+  await motion(); // la personne bouge : pas de passage au niveau 3
+  await sleep((CRIT_S + 3) * 1000);
+  assert.ok(
+    !inbox.MEDICAL.some((m) => m.type === 'alert.updated' && m.message.alertId === inactivityId && m.message.severity === 'CRITICAL'),
+    'une activité après le niveau 2 évite le niveau 3',
+  );
+});
+
+await step('remise en état : seuils d\'origine, alerte d\'inactivité clôturée par le médical', async () => {
+  const restored = await api(`/seniors/${SENIOR}/thresholds`, { method: 'PUT', token: tokens.MEDICAL, body: { thresholds: originalThresholds } });
+  assert.equal(restored.status, 200);
+  if (inactivityId) {
+    assert.equal((await api(`/seniors/${SENIOR}/alerts/${inactivityId}/close`, { method: 'POST', token: tokens.MEDICAL })).status, 200);
+  }
+  await broker?.endAsync();
 });
 
 await step('application web : servie par nginx, qui relaie /api et /socket.io vers l\'API', async () => {

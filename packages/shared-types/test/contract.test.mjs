@@ -21,12 +21,14 @@ const schemas = {
   event: load('domain-event.schema.json'),
   rejected: load('rejected-message.schema.json'),
   notification: load('notification.schema.json'),
+  profile: load('activity-profile.schema.json'),
 };
 const validate = {
   signal: ajv.compile(schemas.signal),
   event: ajv.compile(schemas.event),
   rejected: ajv.compile(schemas.rejected),
   notification: ajv.compile(schemas.notification),
+  profile: ajv.compile(schemas.profile),
 };
 const errorsOf = (kind) => JSON.stringify(validate[kind].errors);
 
@@ -48,6 +50,7 @@ test('les exemples complets du document respectent les schémas', () => {
     if ('sensorId' in o) kind = 'signal';
     else if ('originalMessage' in o) kind = 'rejected';
     else if (o.type === 'NotificationRequested') kind = 'notification';
+    else if (o.type === 'ActivityProfileUpdated') kind = 'profile';
     else if ('seniorId' in o && o.payload && Object.keys(o.payload).length > 0) kind = 'event';
     if (!kind) continue; // fragment de payload ou enveloppe d'illustration
     checked++;
@@ -59,7 +62,7 @@ test('les exemples complets du document respectent les schémas', () => {
 test('les payloads documentés par type respectent les schémas', () => {
   let checked = 0;
   for (const [, type, body] of doc.matchAll(/### `(\w+)`\n```json\n([\s\S]*?)```/g)) {
-    if (type === 'NotificationRequested') continue; // exemple complet (§9), validé par le test précédent
+    if (type === 'NotificationRequested' || type === 'ActivityProfileUpdated') continue; // exemples complets (§9, §10), validés par le test précédent
     const payload = JSON.parse(body);
     const isSignal = /^[A-Z_]+$/.test(type);
     const message = isSignal
@@ -123,6 +126,37 @@ test('notification refusée : le senior n\'est pas un rôle destinataire, et le 
   assert.equal(validate.notification({ ...notification, payload: { ...notification.payload, message: '' } }), false);
 });
 
+test("profil d'activité refusé : heure hors format, durée nulle, condition inconnue", () => {
+  const message = {
+    eventId: UUID,
+    seniorId: 'senior-001',
+    type: 'ActivityProfileUpdated',
+    timestamp: NOW,
+    payload: {
+      seniorId: 'senior-001',
+      timeZone: 'Europe/Paris',
+      thresholds: [{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, timeRange: { startTime: '22:00', endTime: '07:00' } }],
+    },
+  };
+  assert.equal(validate.profile(message), true, errorsOf('profile'));
+  const withThreshold = (patch) => ({ ...message, payload: { ...message.payload, thresholds: [{ ...message.payload.thresholds[0], ...patch }] } });
+  assert.equal(validate.profile(withThreshold({ timeRange: { startTime: '24:00', endTime: '07:00' } })), false);
+  assert.equal(validate.profile(withThreshold({ durationInMinutes: 0 })), false);
+  assert.equal(validate.profile(withThreshold({ condition: 'MAX_HEART_RATE' })), false);
+  assert.equal(validate.profile(withThreshold({ timeRange: undefined })), false, 'timeRange est obligatoire (null pour « sans plage »)');
+});
+
+test("alerte d'inactivité sans signal déclencheur : acceptée (aucun signal depuis le démarrage)", () => {
+  const inactivity = {
+    eventId: UUID,
+    seniorId: 'senior-001',
+    type: 'CriticalAlertGenerated',
+    timestamp: NOW,
+    payload: { alertId: 'a', reason: 'PROLONGED_INACTIVITY', severity: 'CRITICAL', escalationCause: 'NO_HEART_SIGNAL', triggeringEventIds: [] },
+  };
+  assert.equal(validate.event(inactivity), true, errorsOf('event'));
+});
+
 test('événement de domaine refusé : alerte critique sans signal déclencheur', () => {
   assert.equal(
     validate.event({
@@ -169,6 +203,8 @@ test('les enums TypeScript correspondent aux enums des schémas', () => {
     ['notifications.ts', 'NotificationPriority', schemas.notification.properties.payload.properties.priority.enum],
     ['domain-events.ts', 'Severity', schemas.notification.properties.payload.properties.severity.enum],
     ['domain-events.ts', 'EscalationCause', schemas.notification.properties.payload.properties.escalationCause.enum],
+    ['profiles.ts', 'ProfileMessageType', schemas.profile.properties.type.enum],
+    ['profiles.ts', 'ThresholdCondition', schemas.profile.definitions.ToleranceThreshold.properties.condition.enum],
   ];
   for (const [file, name, schemaEnum] of pairs) {
     assert.deepEqual(sorted(tsValues(file, name)), sorted(schemaEnum), `${name} : TypeScript et schéma divergent`);

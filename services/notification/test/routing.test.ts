@@ -48,6 +48,9 @@ describe('règle de routage (ADR 0008)', () => {
     expect(describeAlert('FALL_DETECTED', 'SENIOR_CONFIRMED', 'CRITICAL').title).toMatch(/confirmée/);
     expect(describeAlert('HELP_REQUESTED', 'IMMEDIATE', 'CRITICAL').title).toBe("Demande d'aide");
     expect(describeAlert('PROLONGED_INACTIVITY', 'NO_RESPONSE', 'WARNING').title).toMatch(/Inactivité/);
+    expect(describeAlert('PROLONGED_INACTIVITY', 'NO_HEART_SIGNAL', 'CRITICAL').message).toMatch(/montre/);
+    expect(describeAlert('PROLONGED_INACTIVITY', 'NO_RECOVERY', 'CRITICAL').title).toMatch(/urgence/);
+    expect(describeAlert('PROLONGED_INACTIVITY', 'SENIOR_CONFIRMED', 'CRITICAL').title).toMatch(/aide/);
   });
 });
 

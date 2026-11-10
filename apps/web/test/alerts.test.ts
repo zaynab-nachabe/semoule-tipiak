@@ -1,7 +1,7 @@
 import type { AlertView, NotificationView } from '@project/shared-types';
 import { describe, expect, it } from 'vitest';
 import { chronological, medicalActions, prependNotification, secondsLeft, upsertAlert } from '../src/model/alerts';
-import { formatAgo, severityLabel } from '../src/model/labels';
+import { formatAgo, formatDuration, severityLabel } from '../src/model/labels';
 
 const alert = (patch: Partial<AlertView>): AlertView => ({
   alertId: 'a-1',
@@ -60,5 +60,6 @@ describe('affichage', () => {
     expect(formatAgo('2026-01-15T13:57:00.000Z', now)).toBe('il y a 3 min');
     expect(formatAgo('2026-01-15T11:00:00.000Z', now)).toBe('il y a 3 h');
     expect(severityLabel.CRITICAL).toBe('Niveau 3 · urgence');
+    expect([formatDuration(45), formatDuration(120), formatDuration(90), formatDuration(600)]).toEqual(['45 min', '2 h', '1 h 30', '10 h']);
   });
 });

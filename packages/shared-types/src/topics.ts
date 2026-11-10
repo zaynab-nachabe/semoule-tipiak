@@ -16,6 +16,8 @@ export const Topics = {
   alert: (seniorId: TopicSafeId, type: DomainEventType): string => `alerts/${seniorId}/${type}`,
   /** Notification émise par le service de notification. */
   notification: (seniorId: TopicSafeId): string => `notifications/${seniorId}`,
+  /** Profil d'activité (seuils d'inactivité) modifié, publié par l'API. */
+  profile: (seniorId: TopicSafeId): string => `profiles/${seniorId}`,
   /** Messages que l'ingestion n'a pas pu normaliser. */
   rejected: 'ingestion/rejected',
 } as const;
@@ -28,7 +30,12 @@ export const Subscriptions = {
   apiGateway: 'alerts/#',
   apiNotifications: 'notifications/+',
   history: 'signals/#',
+  detectionProfiles: 'profiles/+',
 } as const;
+
+/** Route de l'API qui fournit tous les profils d'activité à la détection (en-tête SERVICE_TOKEN_HEADER). */
+export const INTERNAL_PROFILES_ROUTE = '/internal/activity-profiles';
+export const SERVICE_TOKEN_HEADER = 'x-service-token';
 
 /** Route HTTP de Node-RED pour la montre (hors MQTT). */
 export const WATCH_INGEST_ROUTE = '/ingest/watch';

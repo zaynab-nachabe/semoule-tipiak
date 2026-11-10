@@ -27,7 +27,7 @@
         "priority": { "type": "string", "enum": ["INFO", "NORMAL", "URGENT"] },
         "severity": { "type": "string", "enum": ["SYSTEM", "PRE_ALERT", "WARNING", "CRITICAL"] },
         "reason": { "type": "string", "enum": ["FALL_DETECTED", "PROLONGED_INACTIVITY", "HELP_REQUESTED"] },
-        "escalationCause": { "type": "string", "enum": ["NO_RESPONSE", "SENIOR_CONFIRMED", "IMMEDIATE", "NO_RECOVERY"] },
+        "escalationCause": { "type": "string", "enum": ["NO_RESPONSE", "SENIOR_CONFIRMED", "IMMEDIATE", "NO_RECOVERY", "NO_HEART_SIGNAL"] },
         "title": { "type": "string", "minLength": 1 },
         "message": { "type": "string", "minLength": 1 }
       }

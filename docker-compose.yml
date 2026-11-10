@@ -81,6 +81,11 @@ services:
       PRE_CONFIRMATION_DELAY_S: ${PRE_CONFIRMATION_DELAY_S:-60}
       RECOVERY_WINDOW_S: ${RECOVERY_WINDOW_S:-90}
       CRITICAL_ESCALATION_DELAY_S: ${CRITICAL_ESCALATION_DELAY_S:-300}
+      # Inactivité (ADR 0010) : seuils lus à l'API au démarrage, puis mis à jour par message (profiles/+).
+      API_URL: http://api-gateway:3000
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
+      INACTIVITY_CHECK_INTERVAL_S: ${INACTIVITY_CHECK_INTERVAL_S:-60}
+      HEART_RATE_FRESHNESS_S: ${HEART_RATE_FRESHNESS_S:-600}
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -116,6 +121,7 @@ services:
       MQTT_CLIENT_ID: api-gateway
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       NODE_RED_URL: http://node-red:1880   # actions du senior (« tout va bien », « aide »), ADR 0007
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}   # clé de la détection pour /internal (ADR 0010)
       PORT: 3000
     ports:
       - "3000:3000"

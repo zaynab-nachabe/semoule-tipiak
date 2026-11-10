@@ -14,7 +14,7 @@ navigateur ──► nginx :8080 ──┬─► fichiers de l'application
 |---|---|---|
 | **Senior** (René) | « Tout va bien » ou « Avez-vous chuté ? » avec compte à rebours pendant la levée de doute, fréquence cardiaque du jour, dernières alertes | **Tout va bien** (annule la levée de doute), **J'ai besoin d'aide** (niveau 3). Les deux passent par l'API puis Node-RED, comme les boutons de la montre ([ADR 0007](../../docs/adr/0007-actions-application-via-ingestion.md)) |
 | **Famille** (Marie) | Statut de la personne, alerte en cours (gravité, prise en charge), historique, boîte de réception | Marquer une notification comme lue |
-| **Médical** (Dr Martin) | Idem, plus la cause de l'escalade, la fréquence cardiaque, la courbe sur 24 h | **Prendre en charge**, **Clôturer l'alerte**, marquer comme lue |
+| **Médical** (Dr Martin) | Idem, plus la cause de l'escalade, la fréquence cardiaque, la courbe sur 24 h, les **seuils d'inactivité** (jour, nuit…) | **Prendre en charge**, **Clôturer l'alerte**, marquer comme lue, **modifier les seuils** (appliqués aussitôt par la détection, [ADR 0010](../../docs/adr/0010-detection-inactivite.md)) |
 
 La connexion se fait par choix du compte dans une liste, sans mot de passe (hors du périmètre du sujet). Chaque vue charge ses données par REST puis se met à jour en temps réel ; l'indicateur « En direct / Hors ligne » montre l'état de la connexion temps réel. La famille ne reçoit jamais la cause clinique ni la fréquence cardiaque : l'API ne les envoie pas à ce rôle.
 
@@ -55,5 +55,5 @@ Le parcours complet (pages servies par nginx, relais REST et WebSocket, actions 
 
 ## Pas encore fait
 
-- Activité et habitudes (scénario B, inactivité), état des capteurs, seuils et routines (médical), « je m'absente » (senior) : étapes suivantes.
+- État des capteurs (médical) et « je m'absente » (senior) : étapes suivantes. Tendances d'activité : non prévues.
 - Pas de mot de passe, pas de mode hors ligne, pas de notification du navigateur quand l'onglet est en arrière-plan.

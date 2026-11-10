@@ -61,6 +61,20 @@ export class EventIngestionService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Publie un message (QoS 1, sans retain) sans attendre l'accusé : hors connexion, mqtt.js le garde et
+   * l'envoie à la reconnexion. Une erreur est seulement journalisée (limite connue, ADR 0010).
+   */
+  publish(topic: string, message: unknown): void {
+    if (!this.client) {
+      this.logger.error(`publication impossible sur ${topic} : client MQTT non démarré`);
+      return;
+    }
+    this.client.publish(topic, JSON.stringify(message), { qos: MQTT_QOS, retain: false }, (error) => {
+      if (error) this.logger.error(`publication impossible sur ${topic} : ${error.message}`);
+    });
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.client?.endAsync();
   }

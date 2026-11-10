@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "activity-profile.schema.json",
+  "title": "ActivityProfileUpdated",
+  "description": "Profil d'activité (seuils d'inactivité) publié par l'API sur profiles/{seniorId}. Voir docs/format-evenements.md §10. La définition ActivityProfile sert aussi à la réponse de GET /internal/activity-profiles.",
+  "type": "object",
+  "required": ["eventId", "seniorId", "type", "timestamp", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "seniorId": { "$ref": "#/definitions/TopicSafeId" },
+    "type": { "type": "string", "enum": ["ActivityProfileUpdated"] },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$"
+    },
+    "payload": { "$ref": "#/definitions/ActivityProfile" }
+  },
+  "definitions": {
+    "TopicSafeId": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+    "LocalTime": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+    "TimeRange": {
+      "type": "object",
+      "required": ["startTime", "endTime"],
+      "additionalProperties": false,
+      "properties": {
+        "startTime": { "$ref": "#/definitions/LocalTime" },
+        "endTime": { "$ref": "#/definitions/LocalTime" }
+      }
+    },
+    "ToleranceThreshold": {
+      "type": "object",
+      "required": ["condition", "durationInMinutes", "timeRange"],
+      "additionalProperties": false,
+      "properties": {
+        "condition": { "type": "string", "enum": ["MAX_INACTIVITY_MINUTES"] },
+        "durationInMinutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
+        "timeRange": {
+          "oneOf": [{ "$ref": "#/definitions/TimeRange" }, { "type": "null" }]
+        }
+      }
+    },
+    "ActivityProfile": {
+      "type": "object",
+      "required": ["seniorId", "timeZone", "thresholds"],
+      "additionalProperties": false,
+      "properties": {
+        "seniorId": { "$ref": "#/definitions/TopicSafeId" },
+        "timeZone": { "type": "string", "minLength": 1 },
+        "thresholds": {
+          "type": "array",
+          "maxItems": 10,
+          "items": { "$ref": "#/definitions/ToleranceThreshold" }
+        }
+      }
+    }
+  }
+}
