@@ -11,7 +11,8 @@
 //         └─► séquence de relèvement ────────────────► alerte close, pas de niveau 3
 // HELP_BUTTON hors de toute alerte en cours ─────────► CriticalAlertGenerated (CRITICAL, IMMEDIATE)
 //
-// Inactivité (ADR 0010) : vérification périodique du temps sans activité contre le seuil du profil
+// Inactivité (ADR 0010) : vérification périodique du temps sans activité contre le seuil du profil,
+// suspendue pendant une absence déclarée (ADR 0011)
 // plus d'activité depuis le seuil ─► PreConfirmationRequested (PROLONGED_INACTIVITY)
 //   ├─► CANCEL_ALERT, ou une activité ───────────────► PreConfirmationCanceled
 //   ├─► HELP_BUTTON ─────────────────────────────────► CriticalAlertGenerated (CRITICAL, SENIOR_CONFIRMED)
@@ -39,6 +40,8 @@ import { assertValidInactivityPolicy, hasReassuringHeartRate, type InactivityPol
 import { createPreConfirmation, type PreConfirmation } from '../value-objects/pre-confirmation.js';
 import { FALLEN, advanceRecovery, isActivitySignal, type ActivitySignal, type RecoveryProgress } from '../value-objects/recovery-progress.js';
 import type { Clock, DomainEventPublisher, IdGenerator, ScheduledTask, Scheduler } from './ports.js';
+
+const latest = (a: Date, b: Date | null): Date => (b && b.getTime() > a.getTime() ? b : a);
 
 /** Emplacement de la bande de pression du lit dans le registre des capteurs (services/ingestion). */
 export const BED_LOCATION = 'lit';
@@ -76,6 +79,8 @@ interface SeniorActivity {
   lastHeartRate: { value: number; at: Date } | null;
   /** Début du dernier incident (chute, aide, inactivité) : pas de nouvelle alerte d'inactivité sans activité depuis. */
   lastIncidentAt: Date | null;
+  /** Fin anticipée d'une absence (« je suis rentré(e) », mouvement) : le compte repart de là (ADR 0011). */
+  resumedAt: Date | null;
 }
 
 export class CorrelationService {
@@ -112,8 +117,13 @@ export class CorrelationService {
     }
   }
 
-  /** Profil modifié par l'équipe médicale (message profiles/{seniorId}). */
+  /** Profil modifié (message profiles/{seniorId}) : seuils changés par le médical, absence déclarée ou terminée. */
   onActivityProfileUpdated(profile: ActivityProfile): void {
+    const now = this.deps.clock.now();
+    const previous = this.deps.profiles.findBySeniorId(profile.seniorId);
+    if (previous?.isAbsentAt(now) && !profile.isAbsentAt(now)) {
+      this.activityOf(profile.seniorId).resumedAt = now; // retour avant l'heure prévue
+    }
     this.updatedByMessage.add(profile.seniorId);
     this.saveProfile(profile);
   }
@@ -143,7 +153,9 @@ export class CorrelationService {
       const history = this.activityOf(profile.seniorId);
       if (this.openFor(profile.seniorId).length > 0) continue; // une alerte à la fois
       if (history.lastIncidentAt && history.lastActivityAt.getTime() <= history.lastIncidentAt.getTime()) continue; // déjà signalée
-      if (profile.evaluateInactivity(history.lastActivityAt, now, history.inBed)) {
+      if (profile.isAbsentAt(now)) continue; // sortie déclarée : l'inactivité ne veut rien dire (ADR 0011)
+      const since = latest(profile.inactiveSince(history.lastActivityAt), history.resumedAt);
+      if (profile.evaluateInactivity(since, now, history.inBed)) {
         this.onInactivitySuspected(profile.seniorId, history);
       }
     }
@@ -160,7 +172,7 @@ export class CorrelationService {
     let history = this.activity.get(seniorId);
     if (!history) {
       // Aucun signal connu (démarrage, nouveau profil) : on compte à partir de maintenant.
-      history = { lastActivityAt: this.deps.clock.now(), lastActivityEventId: null, inBed: false, lastHeartRate: null, lastIncidentAt: null };
+      history = { lastActivityAt: this.deps.clock.now(), lastActivityEventId: null, inBed: false, lastHeartRate: null, lastIncidentAt: null, resumedAt: null };
       this.activity.set(seniorId, history);
     }
     return history;
