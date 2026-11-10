@@ -5,6 +5,7 @@ import type { ActionAcceptedView, RealtimeMessageByType } from '@project/shared-
 import { useState } from 'react';
 import { ApiRequestError, api } from '../api/client';
 import { useRealtimeMessage } from '../api/realtime';
+import { AbsenceCard } from '../components/AbsenceCard';
 import { AlertHistory, Card, ErrorNote } from '../components/common';
 import { useNow, useSeniorFeed } from '../hooks/data';
 import { secondsLeft } from '../model/alerts';
@@ -13,7 +14,7 @@ import { formatAgo } from '../model/labels';
 type PreConfirmation = RealtimeMessageByType['preconfirmation.requested'];
 
 export function SeniorView({ seniorId, firstName }: { seniorId: string; firstName: string }) {
-  const { status, alerts, error } = useSeniorFeed(seniorId);
+  const { status, alerts, error, refresh } = useSeniorFeed(seniorId);
   const [request, setRequest] = useState<PreConfirmation | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -100,6 +101,8 @@ export function SeniorView({ seniorId, firstName }: { seniorId: string; firstNam
         </p>
       )}
       <ErrorNote message={actionError} />
+
+      {status && <AbsenceCard seniorId={seniorId} absence={status.absence} onChange={() => void refresh()} />}
 
       <div className="grid-2">
         <Card title="Mon cœur aujourd’hui">
