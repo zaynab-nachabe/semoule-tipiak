@@ -136,6 +136,7 @@ test("profil d'activité refusé : heure hors format, durée nulle, condition in
       seniorId: 'senior-001',
       timeZone: 'Europe/Paris',
       thresholds: [{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, timeRange: { startTime: '22:00', endTime: '07:00' } }],
+      absence: null,
     },
   };
   assert.equal(validate.profile(message), true, errorsOf('profile'));
@@ -144,6 +145,12 @@ test("profil d'activité refusé : heure hors format, durée nulle, condition in
   assert.equal(validate.profile(withThreshold({ durationInMinutes: 0 })), false);
   assert.equal(validate.profile(withThreshold({ condition: 'MAX_HEART_RATE' })), false);
   assert.equal(validate.profile(withThreshold({ timeRange: undefined })), false, 'timeRange est obligatoire (null pour « sans plage »)');
+  const withAbsence = (absence) => ({ ...message, payload: { ...message.payload, absence } });
+  assert.equal(validate.profile(withAbsence({ since: NOW, until: '2026-01-15T17:00:00.000Z' })), true, errorsOf('profile'));
+  assert.equal(validate.profile(withAbsence({ since: NOW, until: '17:00' })), false, 'retour prévu en ISO 8601 UTC');
+  assert.equal(validate.profile(withAbsence({ since: NOW })), false, 'retour prévu obligatoire');
+  const { absence: _omitted, ...withoutAbsence } = message.payload;
+  assert.equal(validate.profile({ ...message, payload: withoutAbsence }), false, 'absence est obligatoire (null si la personne est chez elle)');
 });
 
 test("alerte d'inactivité sans signal déclencheur : acceptée (aucun signal depuis le démarrage)", () => {

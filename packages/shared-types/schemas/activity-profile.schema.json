@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "activity-profile.schema.json",
   "title": "ActivityProfileUpdated",
-  "description": "Profil d'activité (seuils d'inactivité) publié par l'API sur profiles/{seniorId}. Voir docs/format-evenements.md §10. La définition ActivityProfile sert aussi à la réponse de GET /internal/activity-profiles.",
+  "description": "Profil d'activité (seuils d'inactivité, absence déclarée) publié par l'API sur profiles/{seniorId}. Voir docs/format-evenements.md §10. La définition ActivityProfile sert aussi à la réponse de GET /internal/activity-profiles.",
   "type": "object",
   "required": ["eventId", "seniorId", "type", "timestamp", "payload"],
   "additionalProperties": false,
@@ -43,9 +43,23 @@
         }
       }
     },
+    "IsoUtcTimestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$"
+    },
+    "Absence": {
+      "description": "Absence déclarée par le senior (ADR 0011) : de since au retour prévu until.",
+      "type": "object",
+      "required": ["since", "until"],
+      "additionalProperties": false,
+      "properties": {
+        "since": { "$ref": "#/definitions/IsoUtcTimestamp" },
+        "until": { "$ref": "#/definitions/IsoUtcTimestamp" }
+      }
+    },
     "ActivityProfile": {
       "type": "object",
-      "required": ["seniorId", "timeZone", "thresholds"],
+      "required": ["seniorId", "timeZone", "thresholds", "absence"],
       "additionalProperties": false,
       "properties": {
         "seniorId": { "$ref": "#/definitions/TopicSafeId" },
@@ -54,6 +68,9 @@
           "type": "array",
           "maxItems": 10,
           "items": { "$ref": "#/definitions/ToleranceThreshold" }
+        },
+        "absence": {
+          "oneOf": [{ "$ref": "#/definitions/Absence" }, { "type": "null" }]
         }
       }
     }

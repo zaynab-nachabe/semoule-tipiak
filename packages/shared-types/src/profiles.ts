@@ -1,5 +1,5 @@
-// Profil d'activité d'un senior (docs/format-evenements.md §10, ADR 0010) : les seuils d'inactivité
-// configurés par l'équipe médicale. L'API le fournit à la détection au démarrage, puis publie
+// Profil d'activité d'un senior (docs/format-evenements.md §10, ADR 0010 et 0011) : les seuils d'inactivité
+// configurés par l'équipe médicale et l'absence déclarée par le senior. L'API le fournit à la détection au démarrage, puis publie
 // ActivityProfileUpdated sur profiles/{seniorId} à chaque modification.
 
 import type { IsoUtcTimestamp, TopicSafeId, Uuid } from './common.js';
@@ -31,11 +31,23 @@ export interface ToleranceThreshold {
   timeRange: TimeRange | null;
 }
 
+/**
+ * Absence déclarée par le senior (« je m'absente », ADR 0011) : l'inactivité n'est pas surveillée
+ * entre `since` et `until` (retour prévu). Après `until`, le temps sans activité se compte à partir de `until`.
+ */
+export interface Absence {
+  since: IsoUtcTimestamp;
+  /** Retour prévu, au plus 24 h après `since`. */
+  until: IsoUtcTimestamp;
+}
+
 export interface ActivityProfile {
   seniorId: TopicSafeId;
   /** Fuseau horaire IANA du logement, pour lire les plages horaires (ex. "Europe/Paris"). */
   timeZone: string;
   thresholds: ToleranceThreshold[];
+  /** Absence en cours ou prévue ; null si la personne est chez elle. */
+  absence: Absence | null;
 }
 
 /** Publié par l'API sur profiles/{seniorId} quand l'équipe médicale modifie les seuils. */

@@ -17,6 +17,7 @@ const DAY_NIGHT: ActivityProfileData = {
     { condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, timeRange: { startTime: '07:00', endTime: '22:00' } },
     { condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 600, timeRange: { startTime: '22:00', endTime: '07:00' } },
   ],
+  absence: null,
 };
 const profile = (data: Partial<ActivityProfileData> = {}) => ActivityProfile.fromContract({ ...DAY_NIGHT, ...data });
 
