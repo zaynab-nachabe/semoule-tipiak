@@ -33,10 +33,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Sans fichier .env, comme sur la machine de l'enseignant
       - name: Valider docker-compose
-        run: |
-          cp .env.example .env
-          docker compose config --quiet && echo "docker-compose valide"
+        run: docker compose config --quiet && echo "docker-compose valide"
 
       # Construit les images des services (vérifie les Dockerfile)
       - name: Construire les images
