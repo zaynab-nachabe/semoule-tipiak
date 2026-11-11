@@ -495,3 +495,45 @@ button:focus-visible {
 .absence-on .senior-big {
   font-size: 1.5rem;
 }
+
+/* --- Capteurs (ADR 0012) --- */
+.sensor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.sensor-list li {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+}
+.sensor-list li.is-problem {
+  border-left: 4px solid var(--warn);
+}
+.sensor-list p {
+  margin: 0.3rem 0 0;
+}
+.badge.sensor-ONLINE {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.badge.sensor-OFFLINE {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.badge.sensor-LOW_BATTERY {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.watch-warning {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 2px solid var(--warn);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0;
+}
