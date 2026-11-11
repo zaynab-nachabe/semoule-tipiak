@@ -57,9 +57,22 @@
         "until": { "$ref": "#/definitions/IsoUtcTimestamp" }
       }
     },
+    "ExpectedSensor": {
+      "description": "Capteur attendu au domicile, surveillé par la détection (ADR 0012).",
+      "type": "object",
+      "required": ["sensorId", "kind", "room", "location", "expectedIntervalMinutes"],
+      "additionalProperties": false,
+      "properties": {
+        "sensorId": { "$ref": "#/definitions/TopicSafeId" },
+        "kind": { "type": "string", "enum": ["PIR", "PRESSURE_PLATE", "WATCH"] },
+        "room": { "type": ["string", "null"], "minLength": 1 },
+        "location": { "type": ["string", "null"], "minLength": 1 },
+        "expectedIntervalMinutes": { "type": "integer", "minimum": 1, "maximum": 1440 }
+      }
+    },
     "ActivityProfile": {
       "type": "object",
-      "required": ["seniorId", "timeZone", "thresholds", "absence"],
+      "required": ["seniorId", "timeZone", "thresholds", "absence", "sensors"],
       "additionalProperties": false,
       "properties": {
         "seniorId": { "$ref": "#/definitions/TopicSafeId" },
@@ -71,6 +84,11 @@
         },
         "absence": {
           "oneOf": [{ "$ref": "#/definitions/Absence" }, { "type": "null" }]
+        },
+        "sensors": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/definitions/ExpectedSensor" }
         }
       }
     }

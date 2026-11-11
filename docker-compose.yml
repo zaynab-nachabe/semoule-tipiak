@@ -86,6 +86,9 @@ services:
       SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
       INACTIVITY_CHECK_INTERVAL_S: ${INACTIVITY_CHECK_INTERVAL_S:-60}
       HEART_RATE_FRESHNESS_S: ${HEART_RATE_FRESHNESS_S:-600}
+      # Surveillance des capteurs (ADR 0012) : vérification des capteurs muets, seuil de batterie faible.
+      SENSOR_CHECK_INTERVAL_S: ${SENSOR_CHECK_INTERVAL_S:-60}
+      LOW_BATTERY_PERCENT: ${LOW_BATTERY_PERCENT:-20}
     depends_on:
       mosquitto:
         condition: service_healthy

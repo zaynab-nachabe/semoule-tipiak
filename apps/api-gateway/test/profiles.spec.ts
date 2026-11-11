@@ -18,6 +18,7 @@ describe('profil d\'activité (ADR 0010)', () => {
       timeZone: 'Europe/Paris',
       thresholds: [day, night, { condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 90, timeRange: null }],
       absence: null,
+      sensors: [],
     });
   });
 

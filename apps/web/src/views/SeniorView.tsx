@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { ApiRequestError, api } from '../api/client';
 import { useRealtimeMessage } from '../api/realtime';
 import { AbsenceCard } from '../components/AbsenceCard';
+import { useSensors } from '../hooks/sensors';
+import { isWatchSilent } from '../model/sensors';
 import { AlertHistory, Card, ErrorNote } from '../components/common';
 import { useNow, useSeniorFeed } from '../hooks/data';
 import { secondsLeft } from '../model/alerts';
@@ -15,6 +17,7 @@ type PreConfirmation = RealtimeMessageByType['preconfirmation.requested'];
 
 export function SeniorView({ seniorId, firstName }: { seniorId: string; firstName: string }) {
   const { status, alerts, error, refresh } = useSeniorFeed(seniorId);
+  const { sensors } = useSensors(seniorId);
   const [request, setRequest] = useState<PreConfirmation | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -101,6 +104,12 @@ export function SeniorView({ seniorId, firstName }: { seniorId: string; firstNam
         </p>
       )}
       <ErrorNote message={actionError} />
+
+      {isWatchSilent(sensors) && (
+        <p className="watch-warning" role="alert">
+          Votre montre ne transmet plus : vérifiez qu’elle est chargée et que vous la portez. Sans elle, une chute ne peut pas être détectée.
+        </p>
+      )}
 
       {status && <AbsenceCard seniorId={seniorId} absence={status.absence} onChange={() => void refresh()} />}
 

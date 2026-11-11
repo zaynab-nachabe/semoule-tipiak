@@ -27,6 +27,8 @@ export const Subscriptions = {
   ingestion: 'zigbee2mqtt/+',
   detection: 'signals/+/+',
   notification: 'alerts/+/CriticalAlertGenerated',
+  /** États de capteurs (niveau 0, ADR 0012), aussi routés par la notification. */
+  notificationSensors: 'alerts/+/SensorStatusChanged',
   apiGateway: 'alerts/#',
   apiNotifications: 'notifications/+',
   history: 'signals/#',

@@ -56,7 +56,7 @@ jobs:
 
       # Une chute envoyée par la « montre » traverse Node-RED, la détection et l'API :
       # niveaux 1, 2 et 3, ce que voit chaque rôle (temps réel et REST), règles d'accès, prise en charge ;
-      # puis l'inactivité avec un seuil d'une minute fixé par le médical, et une absence déclarée.
+      # puis l'inactivité avec un seuil d'une minute fixé par le médical, une absence déclarée, et une batterie faible.
       - name: Scénario de chute de bout en bout
         run: node apps/api-gateway/test/e2e/fall-scenario.e2e.mjs
 

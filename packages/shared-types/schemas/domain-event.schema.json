@@ -15,7 +15,8 @@
         "PreConfirmationRequested",
         "PreConfirmationCanceled",
         "PreConfirmationTimeoutExpired",
-        "CriticalAlertGenerated"
+        "CriticalAlertGenerated",
+        "SensorStatusChanged"
       ]
     },
     "timestamp": { "$ref": "#/definitions/IsoUtcTimestamp" },
@@ -37,6 +38,10 @@
     {
       "if": { "properties": { "type": { "const": "CriticalAlertGenerated" } } },
       "then": { "properties": { "payload": { "$ref": "#/definitions/CriticalAlertGeneratedPayload" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "SensorStatusChanged" } } },
+      "then": { "properties": { "payload": { "$ref": "#/definitions/SensorStatusChangedPayload" } } }
     }
   ],
   "definitions": {
@@ -112,6 +117,33 @@
         "severity": { "$ref": "#/definitions/Severity" },
         "escalationCause": { "$ref": "#/definitions/EscalationCause" },
         "triggeringEventIds": { "$ref": "#/definitions/TriggeringEventIds" }
+      }
+    },
+    "SensorStatusChangedPayload": {
+      "description": "Niveau 0 (SYSTEM) : capteur muet, batterie faible, ou de nouveau en ligne (ADR 0012).",
+      "type": "object",
+      "required": ["sensorId", "kind", "status", "severity", "lastSeenAt", "battery"],
+      "additionalProperties": false,
+      "properties": {
+        "sensorId": { "$ref": "#/definitions/TopicSafeId" },
+        "kind": { "type": "string", "enum": ["PIR", "PRESSURE_PLATE", "WATCH"] },
+        "status": { "type": "string", "enum": ["ONLINE", "OFFLINE", "LOW_BATTERY"] },
+        "severity": { "type": "string", "enum": ["SYSTEM"] },
+        "lastSeenAt": { "oneOf": [{ "$ref": "#/definitions/IsoUtcTimestamp" }, { "type": "null" }] },
+        "battery": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["value", "unit"],
+              "additionalProperties": false,
+              "properties": {
+                "value": { "type": "number", "minimum": 0, "maximum": 100 },
+                "unit": { "type": "string", "enum": ["%"] }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
       }
     }
   }

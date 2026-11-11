@@ -89,14 +89,20 @@ Un point de série temporelle, pour les graphiques. `unit` reprend celle du payl
 
 ### `SensorHealthView`
 
-État d'un capteur (rôle médical ; version simplifiée pour la famille). Réutilise la forme `{ value, unit }` de `SensorHeartbeatPayload`.
+Un capteur attendu et son état ([ADR 0012](adr/0012-surveillance-capteurs.md)) : dernier état publié par la détection (`SensorStatusChanged`), dernier signal reçu et dernière batterie (historique des signaux). Famille et senior : version simplifiée (`model` et `expectedIntervalMinutes` à `null`).
 
 ```jsonc
 {
   "sensorId": "pir-chambre",
-  "online": true,
-  "battery": { "value": 84, "unit": "%" },
-  "lastSeenAt": "2026-01-15T14:35:00.000Z"
+  "kind": "PIR",                          // SensorKind : PIR | PRESSURE_PLATE | WATCH
+  "room": "chambre",
+  "location": null,
+  "status": "LOW_BATTERY",                // SensorStatus : ONLINE | OFFLINE | LOW_BATTERY
+  "statusChangedAt": "2026-01-15T14:35:10.000Z",
+  "lastSeenAt": "2026-01-15T14:35:00.000Z",
+  "battery": { "value": 12, "unit": "%" },
+  "model": "Aqara RTCGQ11LM",             // médical uniquement
+  "expectedIntervalMinutes": 120          // médical uniquement : au-delà sans signal, le capteur est muet
 }
 ```
 
@@ -108,7 +114,8 @@ Une notification remise à **une personne** (boîte de réception de la famille 
 {
   "notificationId": "5b0c…",
   "seniorId": "senior-001",
-  "alertId": "a1b2…",
+  "alertId": "a1b2…",                 // null pour une notification de capteur (sensorId renseigné, severity SYSTEM)
+  "sensorId": null,
   "priority": "URGENT",
   "severity": "CRITICAL",
   "reason": "FALL_DETECTED",
@@ -147,7 +154,7 @@ Une notification remise à **une personne** (boîte de réception de la famille 
 | `GET` | `/seniors/{seniorId}/alerts/{alertId}` | senior, famille, médical | `AlertView` | ✅ |
 | `GET` | `/seniors/{seniorId}/measurements?type=HEART_RATE&from=…&to=…` | médical | `Paginated<MeasurementPointView>` (`type` : `HEART_RATE`, `FALL_IMPACT` ou `SENSOR_HEARTBEAT`) | ✅ |
 | `GET` | `/seniors/{seniorId}/activity?from=…&to=…` | famille, médical | Activité agrégée (forme à définir) | non réalisé (tendances d'activité) |
-| `GET` | `/seniors/{seniorId}/sensors` | famille, médical | Liste de `SensorHealthView` | à venir (surveillance des capteurs) |
+| `GET` | `/seniors/{seniorId}/sensors` | senior, famille, médical | `SensorHealthView[]` : la montre, puis les capteurs fixes par pièce ; projetée selon le rôle ([ADR 0012](adr/0012-surveillance-capteurs.md)) | ✅ |
 
 ### Actions
 | Méthode | Chemin | Rôles | Description | Statut |
@@ -184,6 +191,7 @@ L'application ouvre une connexion **socket.io** sur le port de l'API, avec le je
 | `alert.created` | `AlertView` | senior : dès la levée de doute ; famille et médical : **à partir de l'escalade** (niveau 2 et plus, ADR 0005) | ✅ |
 | `alert.updated` | `AlertView` (statut, gravité ou prise en charge changés) | idem | ✅ |
 | `notification.created` | `NotificationView` | **le seul destinataire** : famille (`NORMAL` au niveau 2, `URGENT` au niveau 3) et médical (`INFO` puis `URGENT`) | ✅ |
+| `sensor.changed` | `{ seniorId, sensor: SensorHealthView }` | tous ceux ayant accès au senior, projeté selon le rôle (capteur muet, batterie faible, de nouveau en ligne) | ✅ |
 | `absence.changed` | `{ seniorId, absence: AbsenceView \| null }` | tous ceux ayant accès au senior (absence déclarée, terminée ou remplacée) | ✅ |
 | `status.changed` | `SeniorStatusView` | tous ceux ayant accès au senior | à venir |
 
@@ -209,7 +217,7 @@ Projection par rôle :
 | `severity` de l'alerte | — | ✅ | ✅ |
 | Fréquence cardiaque (valeur/courbes) | ✅ (valeur du jour) | — | ✅ (brut + historique) |
 | Activité / tendances | résumé personnel | résumé | détaillé |
-| État des capteurs | — | ✅ (simplifié) | ✅ |
+| État des capteurs | ✅ (simplifié : « votre montre ne transmet plus ») | ✅ (simplifié) | ✅ |
 | Seuils d'inactivité (lecture et écriture), contacts | — | — | ✅ |
 | Annuler une alerte, demander de l'aide | ✅ | — | — |
 | Déclarer une absence, « je suis rentré(e) » | ✅ | — (la voit dans le statut) | — (la voit dans le statut) |

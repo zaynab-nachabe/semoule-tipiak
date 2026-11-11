@@ -2,9 +2,9 @@
 
 Cœur de métier du système (DDD §3.1). Ce service reçoit les signaux normalisés sur MQTT, applique les règles de corrélation et publie une pré-confirmation ou une alerte, avec une gravité sur l'échelle à 4 niveaux.
 
-**Périmètre : la chute (scénario A du DDD) et l'inactivité prolongée (scénario B).**
+**Périmètre : la chute (scénario A du DDD), l'inactivité prolongée (scénario B) et la surveillance des capteurs (risque R1).**
 
-Décisions : [ADR 0001](../../docs/adr/0001-detection-typescript-mqttjs.md) (TypeScript simple + mqtt.js), [0002](../../docs/adr/0002-mqtt-seul-bus-de-messages.md) (MQTT seul), [0003](../../docs/adr/0003-detection-chute-deux-niveaux.md) (détection en deux niveaux, 3,0 g), [0004](../../docs/adr/0004-sequence-de-relevement.md) (séquence de relèvement), [0005](../../docs/adr/0005-echelle-de-gravite.md) (gravité), [0010](../../docs/adr/0010-detection-inactivite.md) (inactivité, seuils lus à l'API puis mis à jour par message), [0011](../../docs/adr/0011-absence-declaree.md) (absence déclarée).
+Décisions : [ADR 0001](../../docs/adr/0001-detection-typescript-mqttjs.md) (TypeScript simple + mqtt.js), [0002](../../docs/adr/0002-mqtt-seul-bus-de-messages.md) (MQTT seul), [0003](../../docs/adr/0003-detection-chute-deux-niveaux.md) (détection en deux niveaux, 3,0 g), [0004](../../docs/adr/0004-sequence-de-relevement.md) (séquence de relèvement), [0005](../../docs/adr/0005-echelle-de-gravite.md) (gravité), [0010](../../docs/adr/0010-detection-inactivite.md) (inactivité, seuils lus à l'API puis mis à jour par message), [0011](../../docs/adr/0011-absence-declaree.md) (absence déclarée), [0012](../../docs/adr/0012-surveillance-capteurs.md) (surveillance des capteurs).
 
 ## Organisation
 
@@ -50,6 +50,8 @@ plus d'activité depuis le seuil du profil ─► PreConfirmationRequested (PROL
 
 **Absence déclarée** (« je m'absente », reçue dans le profil) : pas de surveillance de l'inactivité jusqu'au retour prévu ; ensuite, le temps sans activité se compte depuis l'heure de retour prévue (ou depuis la fin anticipée de l'absence). La chute et le bouton d'aide restent surveillés.
 
+**Surveillance des capteurs** (`SensorSupervisionService`, vérification chaque minute) : pour chaque capteur attendu du profil, `OFFLINE` si aucun signal depuis plus que son intervalle attendu (2 h pour les capteurs Zigbee, 15 min pour la montre), `LOW_BATTERY` si la dernière batterie est sous 20 %, `ONLINE` sinon. Publie `SensorStatusChanged` (niveau 0, `SYSTEM`) à chaque changement d'état seulement.
+
 **Séquence de relèvement** : une **activité** (`PIR_MOTION` ou `PRESSURE_PLATE`) après l'impact, puis dans les 90 s une **stabilité** (`PRESSURE_PLATE` à `PRESSED`, ou `PIR_MOTION` dans une autre pièce). Si la levée de doute expire au milieu de la séquence, la décision est reportée une seule fois jusqu'à la fin des 90 s.
 
 ## Paramètres
@@ -66,6 +68,8 @@ Lus dans les variables d'environnement (voir `docker-compose.yml`). Laisser une 
 | `CRITICAL_ESCALATION_DELAY_S` | `300` | Délai du niveau 2 au niveau 3 sans relèvement | ADR 0005 |
 | `INACTIVITY_CHECK_INTERVAL_S` | `60` | Fréquence de vérification des seuils d'inactivité | ADR 0010 |
 | `HEART_RATE_FRESHNESS_S` | `600` | Âge maximal d'une fréquence cardiaque « rassurante » | ADR 0010 |
+| `SENSOR_CHECK_INTERVAL_S` | `60` | Fréquence de vérification des capteurs muets | ADR 0012 |
+| `LOW_BATTERY_PERCENT` | `20` | Seuil de batterie faible | ADR 0012 |
 | `API_URL` | `http://localhost:3000` | API qui fournit les profils au démarrage (`http://api-gateway:3000` sous Docker) | ADR 0010 |
 | `SERVICE_TOKEN` | `dev-service-token-change-me` | Clé partagée avec l'API pour `/internal/activity-profiles` | ADR 0010 |
 
@@ -126,5 +130,7 @@ Elles sont volontairement conservées et alimentent la matrice des risques.
 | Seuils pas encore chargés (API arrêtée au démarrage) | Inactivité non surveillée tant que l'API ne répond pas ; le journal l'indique à chaque essai |
 | Redémarrage de la détection | Le temps sans activité repart de zéro : une inactivité en cours est détectée en retard |
 | Mise à jour de profil publiée pendant une longue coupure du broker | Ancien profil gardé jusqu'au prochain redémarrage de la détection |
+| Surveillance des capteurs repartie de zéro au redémarrage | Chaque capteur est supposé en ligne ; un capteur déjà muet est signalé avec un retard d'au plus un intervalle |
+| Registre des capteurs en double (Node-RED et API) | Un capteur ajouté à un seul registre est rejeté ou jamais surveillé |
 | Sommeil hors du lit (fauteuil) | Le seuil de jour s'applique en journée : levée de doute possible pendant une sieste |
 | `ActivityHistory` (DDD §4.5) réduit à l'essentiel | Dernière activité, état du lit et dernière fréquence cardiaque par senior, pas l'historique complet ; la `Map<Date, RawSignal>` du DDD ne fonctionnerait pas en JavaScript (clé `Date` comparée par référence) |

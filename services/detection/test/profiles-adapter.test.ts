@@ -9,6 +9,7 @@ const PROFILE: ActivityProfileData = {
   timeZone: 'Europe/Paris',
   thresholds: [{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, timeRange: { startTime: '07:00', endTime: '22:00' } }],
   absence: null,
+  sensors: [],
 };
 let n = 0;
 const message = (payload: ActivityProfileData = PROFILE, eventId?: string) => {

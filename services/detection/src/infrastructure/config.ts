@@ -8,6 +8,11 @@ import {
   type FallDetectionPolicy,
 } from '../domain/value-objects/fall-detection-policy.js';
 import {
+  DEFAULT_SENSOR_SUPERVISION_POLICY,
+  assertValidSupervisionPolicy,
+  type SensorSupervisionPolicy,
+} from '../domain/value-objects/sensor-supervision-policy.js';
+import {
   DEFAULT_INACTIVITY_POLICY,
   assertValidInactivityPolicy,
   type InactivityPolicy,
@@ -28,6 +33,8 @@ export interface DetectionConfig {
   readonly policy: FallDetectionPolicy;
   /** Absent : valeurs par défaut (ADR 0010). */
   readonly inactivityPolicy?: InactivityPolicy;
+  /** Absent : valeurs par défaut (ADR 0012). */
+  readonly supervisionPolicy?: SensorSupervisionPolicy;
   /** Absent : pas de chargement initial (tests) ; les profils arrivent alors seulement par message. */
   readonly profileSource?: ProfileSource;
 }
@@ -50,11 +57,18 @@ export function loadConfig(env: Env = process.env): DetectionConfig {
     normalHeartRate: i.normalHeartRate,
   };
   assertValidInactivityPolicy(inactivityPolicy);
+  const sp = DEFAULT_SENSOR_SUPERVISION_POLICY;
+  const supervisionPolicy: SensorSupervisionPolicy = {
+    checkIntervalMs: seconds(env, 'SENSOR_CHECK_INTERVAL_S', sp.checkIntervalMs),
+    lowBatteryPercent: number(env, 'LOW_BATTERY_PERCENT', sp.lowBatteryPercent),
+  };
+  assertValidSupervisionPolicy(supervisionPolicy);
   return {
     mqttUrl: env.MQTT_URL || 'mqtt://localhost:1883',
     mqttClientId: env.MQTT_CLIENT_ID || 'detection',
     policy,
     inactivityPolicy,
+    supervisionPolicy,
     profileSource: {
       apiUrl: (env.API_URL || 'http://localhost:3000').replace(/\/$/, ''),
       serviceToken: env.SERVICE_TOKEN || 'dev-service-token-change-me',

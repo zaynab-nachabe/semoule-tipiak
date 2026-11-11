@@ -47,7 +47,7 @@ test('les exemples complets du document respectent les schémas', () => {
   for (const [, body] of doc.matchAll(/```json\n([\s\S]*?)```/g)) {
     const o = JSON.parse(body);
     let kind = null;
-    if ('sensorId' in o) kind = 'signal';
+    if ('sensorId' in o && 'eventId' in o) kind = 'signal'; // un payload SensorStatusChanged porte aussi sensorId
     else if ('originalMessage' in o) kind = 'rejected';
     else if (o.type === 'NotificationRequested') kind = 'notification';
     else if (o.type === 'ActivityProfileUpdated') kind = 'profile';
@@ -119,11 +119,17 @@ test('notification refusée : le senior n\'est pas un rôle destinataire, et le 
     seniorId: 'senior-001',
     type: 'NotificationRequested',
     timestamp: NOW,
-    payload: { alertId: 'a', recipientRole: 'FAMILY', priority: 'URGENT', severity: 'CRITICAL', reason: 'FALL_DETECTED', escalationCause: 'NO_RECOVERY', title: 'T', message: 'M' },
+    payload: { alertId: 'a', sensorId: null, recipientRole: 'FAMILY', priority: 'URGENT', severity: 'CRITICAL', reason: 'FALL_DETECTED', escalationCause: 'NO_RECOVERY', title: 'T', message: 'M' },
   };
   assert.equal(validate.notification(notification), true, errorsOf('notification'));
   assert.equal(validate.notification({ ...notification, payload: { ...notification.payload, recipientRole: 'SENIOR' } }), false);
   assert.equal(validate.notification({ ...notification, payload: { ...notification.payload, message: '' } }), false);
+  // Une notification concerne une alerte OU un capteur, jamais les deux, jamais aucun.
+  const sensor = { ...notification.payload, alertId: null, sensorId: 'watch-001', severity: 'SYSTEM', reason: null, escalationCause: null };
+  assert.equal(validate.notification({ ...notification, payload: sensor }), true, errorsOf('notification'));
+  assert.equal(validate.notification({ ...notification, payload: { ...sensor, severity: 'WARNING' } }), false, 'un capteur est toujours SYSTEM');
+  assert.equal(validate.notification({ ...notification, payload: { ...notification.payload, sensorId: 'watch-001' } }), false, 'pas les deux');
+  assert.equal(validate.notification({ ...notification, payload: { ...sensor, sensorId: null } }), false, 'pas aucun');
 });
 
 test("profil d'activité refusé : heure hors format, durée nulle, condition inconnue", () => {
@@ -137,6 +143,7 @@ test("profil d'activité refusé : heure hors format, durée nulle, condition in
       timeZone: 'Europe/Paris',
       thresholds: [{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, timeRange: { startTime: '22:00', endTime: '07:00' } }],
       absence: null,
+      sensors: [{ sensorId: 'watch-001', kind: 'WATCH', room: null, location: null, expectedIntervalMinutes: 15 }],
     },
   };
   assert.equal(validate.profile(message), true, errorsOf('profile'));
@@ -151,6 +158,9 @@ test("profil d'activité refusé : heure hors format, durée nulle, condition in
   assert.equal(validate.profile(withAbsence({ since: NOW })), false, 'retour prévu obligatoire');
   const { absence: _omitted, ...withoutAbsence } = message.payload;
   assert.equal(validate.profile({ ...message, payload: withoutAbsence }), false, 'absence est obligatoire (null si la personne est chez elle)');
+  const withSensor = (patch) => ({ ...message, payload: { ...message.payload, sensors: [{ ...message.payload.sensors[0], ...patch }] } });
+  assert.equal(validate.profile(withSensor({ kind: 'CAMERA' })), false, 'type de capteur inconnu');
+  assert.equal(validate.profile(withSensor({ expectedIntervalMinutes: 0 })), false, 'intervalle attendu de 1 à 1440 min');
 });
 
 test("alerte d'inactivité sans signal déclencheur : acceptée (aucun signal depuis le démarrage)", () => {
@@ -212,9 +222,13 @@ test('les enums TypeScript correspondent aux enums des schémas', () => {
     ['domain-events.ts', 'EscalationCause', schemas.notification.properties.payload.properties.escalationCause.enum],
     ['profiles.ts', 'ProfileMessageType', schemas.profile.properties.type.enum],
     ['profiles.ts', 'ThresholdCondition', schemas.profile.definitions.ToleranceThreshold.properties.condition.enum],
+    ['profiles.ts', 'SensorKind', schemas.profile.definitions.ExpectedSensor.properties.kind.enum],
+    ['profiles.ts', 'SensorKind', schemas.event.definitions.SensorStatusChangedPayload.properties.kind.enum],
+    ['domain-events.ts', 'SensorStatus', schemas.event.definitions.SensorStatusChangedPayload.properties.status.enum],
   ];
   for (const [file, name, schemaEnum] of pairs) {
-    assert.deepEqual(sorted(tsValues(file, name)), sorted(schemaEnum), `${name} : TypeScript et schéma divergent`);
+    const values = schemaEnum.filter((v) => v !== null); // champ facultatif : null en plus des valeurs
+    assert.deepEqual(sorted(tsValues(file, name)), sorted(values), `${name} : TypeScript et schéma divergent`);
   }
 });
 

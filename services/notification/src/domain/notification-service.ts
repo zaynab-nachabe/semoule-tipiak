@@ -33,6 +33,7 @@ export class NotificationService {
         timestamp,
         payload: {
           alertId: event.payload.alertId,
+          sensorId: null,
           recipientRole: routed.recipientRole,
           priority: routed.priority,
           severity: event.payload.severity,

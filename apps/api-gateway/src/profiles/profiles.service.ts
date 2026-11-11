@@ -1,11 +1,12 @@
-// Profils d'activité (ADR 0010, 0011) : seuils d'inactivité (modifiés par l'équipe médicale) et absence
-// en cours (déclarée par le senior). Chaque modification est publiée sur profiles/{seniorId} : la détection
+// Profils d'activité (ADR 0010 à 0012) : seuils d'inactivité (modifiés par l'équipe médicale), absence
+// en cours (déclarée par le senior) et capteurs attendus. Chaque modification est publiée sur profiles/{seniorId} : la détection
 // l'applique sans relire la base.
 
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Topics, type ActivityProfile, type ActivityProfileUpdated, type ToleranceThreshold } from '@project/shared-types';
 import { randomUUID } from 'node:crypto';
 import { toAbsenceView } from '../absence/absence';
+import { sortSensors, toExpectedSensor, type SensorRow } from '../sensors/sensor-health';
 import { EventIngestionService } from '../events/event-ingestion.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { toActivityProfile, toRow } from './activity-profile';
@@ -62,6 +63,7 @@ export class ProfilesService {
   private include(now: Date) {
     return {
       thresholds: true,
+      sensors: true,
       absences: { where: { endedAt: null, expectedReturnAt: { gt: now } }, orderBy: { startedAt: 'desc' as const }, take: 1 },
     };
   }
@@ -69,8 +71,10 @@ export class ProfilesService {
   private toProfile(senior: Parameters<typeof toActivityProfile>[0] & {
     thresholds: Parameters<typeof toActivityProfile>[1];
     absences: { startedAt: Date; expectedReturnAt: Date; endedAt: Date | null }[];
+    sensors: SensorRow[];
   }): ActivityProfile {
     const absence = senior.absences[0];
-    return toActivityProfile(senior, senior.thresholds, absence ? toAbsenceView(absence) : null);
+    const sensors = sortSensors(senior.sensors).map(toExpectedSensor);
+    return toActivityProfile(senior, senior.thresholds, absence ? toAbsenceView(absence) : null, sensors);
   }
 }

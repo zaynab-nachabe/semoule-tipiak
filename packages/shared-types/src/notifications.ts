@@ -15,13 +15,18 @@ export type RecipientRole = (typeof RecipientRole)[keyof typeof RecipientRole];
 export const NotificationPriority = { INFO: 'INFO', NORMAL: 'NORMAL', URGENT: 'URGENT' } as const;
 export type NotificationPriority = (typeof NotificationPriority)[keyof typeof NotificationPriority];
 
+/**
+ * Une notification concerne soit une alerte (alertId, reason, escalationCause renseignés, sensorId null),
+ * soit un capteur (sensorId renseigné, severity SYSTEM, les trois autres null) : ADR 0012.
+ */
 export interface NotificationRequestedPayload {
-  alertId: string;
+  alertId: string | null;
+  sensorId: TopicSafeId | null;
   recipientRole: RecipientRole;
   priority: NotificationPriority;
   severity: Severity;
-  reason: AlertReason;
-  escalationCause: EscalationCause;
+  reason: AlertReason | null;
+  escalationCause: EscalationCause | null;
   /** Texte destiné aux personnes, en français. */
   title: string;
   message: string;

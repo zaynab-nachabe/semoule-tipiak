@@ -2,6 +2,7 @@
 // détaillées (l'API ne les envoie pas à ce rôle).
 
 import { AlertHistory, Card, ErrorNote, NotificationInbox, StatusSummary } from '../components/common';
+import { SensorsSummary } from '../components/SensorsCard';
 import { useNotifications, useSeniorFeed } from '../hooks/data';
 
 export function FamilyView({ seniorId, seniorName }: { seniorId: string; seniorName: string }) {
@@ -15,6 +16,7 @@ export function FamilyView({ seniorId, seniorName }: { seniorId: string; seniorN
           <ErrorNote message={error} />
           {status ? <StatusSummary status={status} /> : <p className="muted">Chargement…</p>}
         </Card>
+        <SensorsSummary seniorId={seniorId} />
         <Card title="Historique des alertes">
           <AlertHistory alerts={alerts} />
         </Card>

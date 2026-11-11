@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { AlertHistory, Card, ErrorNote, NotificationInbox, StatusSummary } from '../components/common';
 import { HeartRateChart } from '../components/HeartRateChart';
+import { SensorsCard } from '../components/SensorsCard';
 import { ThresholdsCard } from '../components/ThresholdsCard';
 import { useNotifications, useSeniorFeed } from '../hooks/data';
 import { medicalActions } from '../model/alerts';
@@ -73,6 +74,7 @@ export function MedicalView({ seniorId, seniorName }: { seniorId: string; senior
         <Card title="Historique des alertes">
           <AlertHistory alerts={alerts} renderActions={renderActions} />
         </Card>
+        <SensorsCard seniorId={seniorId} />
         <ThresholdsCard seniorId={seniorId} />
       </div>
       <Card title="Notifications" actions={inbox.unread > 0 ? <span className="badge count">{inbox.unread} non lue(s)</span> : null}>

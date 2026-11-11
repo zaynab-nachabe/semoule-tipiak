@@ -14,6 +14,7 @@ const MESSAGE_TYPES: readonly RealtimeMessageType[] = [
   'notification.created',
   'preconfirmation.requested',
   'absence.changed',
+  'sensor.changed',
 ];
 
 interface Realtime {
