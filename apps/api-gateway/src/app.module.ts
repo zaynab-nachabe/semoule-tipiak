@@ -18,13 +18,15 @@ import { InternalController, ServiceTokenGuard, ThresholdsController } from './p
 import { ProfilesService } from './profiles/profiles.service';
 import { RealtimeGateway } from './realtime/realtime.gateway';
 import { SeniorsController } from './seniors/seniors.controller';
+import { SensorsController } from './sensors/sensors.controller';
+import { SensorsService } from './sensors/sensors.service';
 import { SignalsService } from './signals/signals.service';
 
 const config = loadConfig();
 
 @Module({
   imports: [JwtModule.register({ secret: config.jwtSecret, signOptions: { expiresIn: config.jwtExpiresIn as `${number}h` } })],
-  controllers: [AuthController, SeniorsController, AbsenceController, ThresholdsController, InternalController, NotificationsController, HealthController],
+  controllers: [AuthController, SeniorsController, SensorsController, AbsenceController, ThresholdsController, InternalController, NotificationsController, HealthController],
   providers: [
     { provide: API_CONFIG, useValue: config },
     PrismaService,
@@ -39,6 +41,7 @@ const config = loadConfig();
     IngestionClient,
     ProfilesService,
     AbsenceService,
+    SensorsService,
     ServiceTokenGuard,
   ],
 })

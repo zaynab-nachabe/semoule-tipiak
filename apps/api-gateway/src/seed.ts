@@ -54,6 +54,20 @@ async function seed(prisma: PrismaClient): Promise<void> {
       ],
     });
   }
+  // Capteurs attendus (ADR 0012) : même liste que le registre de Node-RED (services/ingestion/flows.json).
+  // Intervalle attendu : les capteurs Zigbee envoient un rapport au moins toutes les heures ; la montre, plusieurs fois par heure.
+  const sensors = [
+    { id: 'pir-cuisine', kind: 'PIR', model: 'Aqara RTCGQ11LM', room: 'cuisine', location: null, expectedIntervalMinutes: 120 },
+    { id: 'pir-salon', kind: 'PIR', model: 'Aqara RTCGQ11LM', room: 'salon', location: null, expectedIntervalMinutes: 120 },
+    { id: 'pir-chambre', kind: 'PIR', model: 'Aqara RTCGQ11LM', room: 'chambre', location: null, expectedIntervalMinutes: 120 },
+    { id: 'plate-lit', kind: 'PRESSURE_PLATE', model: 'Tuya TS0601_bed_presence_sensor', room: 'chambre', location: 'lit', expectedIntervalMinutes: 120 },
+    { id: 'plate-fauteuil', kind: 'PRESSURE_PLATE', model: 'Tuya TS0601_bed_presence_sensor', room: 'salon', location: 'fauteuil', expectedIntervalMinutes: 120 },
+    { id: 'watch-001', kind: 'WATCH', model: null, room: null, location: null, expectedIntervalMinutes: 15 },
+  ] as const;
+  for (const sensor of sensors) {
+    await prisma.sensor.upsert({ where: { id: sensor.id }, update: {}, create: { ...sensor, seniorId: DEMO_SENIOR_ID } });
+  }
+
   if ((await prisma.emergencyContact.count({ where: { seniorId: DEMO_SENIOR_ID } })) === 0) {
     await prisma.emergencyContact.create({
       data: { seniorId: DEMO_SENIOR_ID, fullName: 'Marie Dupont', phone: '+33600000000', priority: 1 },
@@ -64,7 +78,7 @@ async function seed(prisma: PrismaClient): Promise<void> {
 if (require.main === module) {
   const prisma = new PrismaClient();
   seed(prisma)
-    .then(() => console.log(`Seed terminé : senior ${DEMO_SENIOR_ID}, famille, médical, 2 relations consenties.`))
+    .then(() => console.log(`Seed terminé : senior ${DEMO_SENIOR_ID}, famille, médical, 2 relations consenties, 6 capteurs.`))
     .catch((error: unknown) => {
       console.error(error);
       process.exitCode = 1;

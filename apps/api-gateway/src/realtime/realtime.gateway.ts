@@ -11,6 +11,8 @@ import type { AlertChange } from '../alerts/alerts.service';
 import { isPushedTo, toAlertView } from '../alerts/alert-view';
 import { AuthService } from '../auth/auth.service';
 import type { DeliveredNotification } from '../notifications/notifications.service';
+import type { SensorRow } from '../sensors/sensor-health';
+import { SensorsService } from '../sensors/sensors.service';
 
 interface ClientData {
   personId: string;
@@ -31,6 +33,7 @@ export class RealtimeGateway implements OnGatewayConnection {
   constructor(
     private readonly auth: AuthService,
     private readonly access: AccessService,
+    private readonly sensors: SensorsService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -66,6 +69,16 @@ export class RealtimeGateway implements OnGatewayConnection {
   /** Absence déclarée ou terminée : à tous ceux qui ont accès au senior (ADR 0011). */
   publishAbsence(message: RealtimeMessageByType['absence.changed']): void {
     this.server.to(room(message.seniorId)).emit('absence.changed', message);
+  }
+
+  /** État d'un capteur changé (ADR 0012) : à chaque client ayant accès au senior, projeté selon son rôle. */
+  async publishSensorChange(seniorId: string, row: SensorRow): Promise<void> {
+    const sockets = await this.server.in(room(seniorId)).fetchSockets();
+    for (const socket of sockets) {
+      const { role } = socket.data as ClientData;
+      const message: RealtimeMessageByType['sensor.changed'] = { seniorId, sensor: await this.sensors.view(seniorId, row, role) };
+      socket.emit('sensor.changed', message);
+    }
   }
 
   /** Notifications : chacune à son seul destinataire. */

@@ -1,5 +1,5 @@
 // Abonnements MQTT de l'API (docs/topics-mqtt.md §3) :
-//   alerts/#   événements de domaine -> journal des alertes + temps réel
+//   alerts/#   événements de domaine -> journal des alertes + temps réel ; état des capteurs (ADR 0012)
 //   signals/#        signaux normalisés     -> historique (décision D3) ; un mouvement peut terminer une absence (ADR 0011)
 //   notifications/+  notifications par rôle -> boîte de réception de chaque destinataire + temps réel (ADR 0008)
 // Session persistante (identifiant fixe) : les messages reçus pendant un redémarrage sont remis ensuite.
@@ -17,6 +17,7 @@ import { RecentIds } from '../common/recent-ids';
 import { API_CONFIG, type ApiConfig } from '../config';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SensorsService } from '../sensors/sensors.service';
 import { SignalsService } from '../signals/signals.service';
 
 const ajv = new Ajv({ strict: true, allErrors: true });
@@ -38,6 +39,7 @@ export class EventIngestionService implements OnModuleInit, OnModuleDestroy {
     private readonly notifications: NotificationsService,
     private readonly realtime: RealtimeGateway,
     @Inject(forwardRef(() => AbsenceService)) private readonly absences: AbsenceService,
+    private readonly sensors: SensorsService,
   ) {}
 
   get isConnected(): boolean {
@@ -106,6 +108,12 @@ export class EventIngestionService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       if (!this.recentEvents.remember(data.eventId)) return; // doublon QoS 1
+      if (data.type === 'SensorStatusChanged') {
+        // État d'un capteur (niveau 0, ADR 0012) : registre des capteurs, pas journal des alertes.
+        const row = await this.sensors.applyStatus(data);
+        if (row) await this.realtime.publishSensorChange(data.seniorId, row);
+        return;
+      }
       const change = await this.alerts.applyEvent(data);
       if (data.type === 'PreConfirmationRequested') {
         await this.realtime.publishPreConfirmation(data.seniorId, data.payload);
