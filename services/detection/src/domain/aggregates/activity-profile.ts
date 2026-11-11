@@ -2,7 +2,7 @@
 // médicale, et son absence déclarée (docs/format-evenements.md §10, ADR 0010 et 0011). Il répond à deux
 // questions : la personne est-elle absente ? sinon, au bout de combien de minutes sans activité lever le doute ?
 
-import type { ActivityProfile as ActivityProfileData, ToleranceThreshold } from '@project/shared-types';
+import type { ActivityProfile as ActivityProfileData, ExpectedSensor, ToleranceThreshold } from '@project/shared-types';
 
 const MINUTES_PER_DAY = 24 * 60;
 
@@ -18,13 +18,17 @@ export class ActivityProfile {
     readonly timeZone: string,
     readonly thresholds: readonly ToleranceThreshold[],
     readonly absence: DeclaredAbsence | null,
+    /** Capteurs attendus au domicile, surveillés par SensorSupervisionService (ADR 0012). */
+    readonly sensors: readonly ExpectedSensor[],
   ) {}
 
   /** Construit le profil à partir du contrat ; refuse un fuseau horaire inconnu. */
   static fromContract(data: ActivityProfileData): ActivityProfile {
     localMinutes(new Date(0), data.timeZone); // lève une RangeError si le fuseau est inconnu
     const absence = data.absence ? Object.freeze({ since: new Date(data.absence.since), until: new Date(data.absence.until) }) : null;
-    return new ActivityProfile(data.seniorId, data.timeZone, Object.freeze(data.thresholds.map((t) => Object.freeze({ ...t }))), absence);
+    const thresholds = Object.freeze(data.thresholds.map((t) => Object.freeze({ ...t })));
+    const sensors = Object.freeze(data.sensors.map((s) => Object.freeze({ ...s })));
+    return new ActivityProfile(data.seniorId, data.timeZone, thresholds, absence, sensors);
   }
 
   /** La personne est sortie : pas de surveillance de l'inactivité jusqu'au retour prévu (ADR 0011). */
