@@ -31,6 +31,7 @@ export class MqttNotificationPublisher implements NotificationPublisher {
       topic,
       eventId: notification.eventId,
       alertId: p.alertId,
+      sensorId: p.sensorId,
       recipientRole: p.recipientRole,
       priority: p.priority,
       severity: p.severity,
