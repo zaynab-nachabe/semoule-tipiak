@@ -1,6 +1,6 @@
 // Statut courant d'un senior (SeniorStatusView), reconstruit à partir du journal et de l'historique.
 
-import type { MeasurementPointView, Role, SeniorStatusView } from '@project/shared-types';
+import type { AbsenceView, MeasurementPointView, Role, SeniorStatusView } from '@project/shared-types';
 import type { AlertRecord } from '../alerts/alert-record';
 import { isInProgress, toAlertView } from '../alerts/alert-view';
 
@@ -17,6 +17,8 @@ export interface StatusInputs {
   /** Dernier signal de présence (PIR_MOTION ou PRESSURE_PLATE). */
   readonly lastPresence: SignalSnapshot | null;
   readonly lastHeartRate: SignalSnapshot | null;
+  /** Absence en cours (ADR 0011). */
+  readonly absence?: AbsenceView | null;
 }
 
 export function deriveSeniorStatus(inputs: StatusInputs, role: Role): SeniorStatusView {
@@ -28,6 +30,7 @@ export function deriveSeniorStatus(inputs: StatusInputs, role: Role): SeniorStat
     currentRoom: roomOf(inputs.lastPresence),
     activeAlert: active ? toAlertView(active, role) : null,
     latestHeartRate: role === 'FAMILY' ? null : toMeasurementPoint(inputs.lastHeartRate),
+    absence: inputs.absence ?? null,
   };
 }
 

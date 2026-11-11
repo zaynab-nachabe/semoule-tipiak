@@ -476,3 +476,22 @@ button:focus-visible {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+/* --- Absence (« je m'absente ») --- */
+.badge.status-away {
+  background: var(--info-bg);
+  color: var(--accent);
+}
+.absence-form label {
+  font-size: 1.2rem;
+}
+.absence-form input[type='time'] {
+  font: inherit;
+  font-size: 1.3rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.absence-on .senior-big {
+  font-size: 1.5rem;
+}

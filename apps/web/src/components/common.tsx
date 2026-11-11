@@ -54,6 +54,12 @@ export function StatusSummary({ status }: { status: SeniorStatusView }) {
           {alert.acknowledgedAt ? ' · prise en charge par l’équipe médicale' : ' · pas encore prise en charge'}
         </p>
       )}
+      {status.absence && (
+        <p className="status-detail absence-note">
+          <span className="badge status-away">Sorti(e)</span> depuis {formatWhen(status.absence.since, now)}, retour prévu à{' '}
+          {formatWhen(status.absence.until, now)} : l’inactivité n’est pas surveillée.
+        </p>
+      )}
       <dl className="facts">
         <div>
           <dt>Dernière activité</dt>

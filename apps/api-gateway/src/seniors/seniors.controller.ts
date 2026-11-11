@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
 import type { ActionAcceptedView, AlertView, MeasurementPointView, Paginated, SeniorStatusView } from '@project/shared-types';
+import { AbsenceService } from '../absence/absence.service';
 import { AccessService } from '../access/access.service';
 import { IngestionClient } from '../actions/ingestion-client';
 import { AlertsService } from '../alerts/alerts.service';
@@ -20,17 +21,19 @@ export class SeniorsController {
     private readonly signals: SignalsService,
     private readonly realtime: RealtimeGateway,
     private readonly ingestion: IngestionClient,
+    private readonly absences: AbsenceService,
   ) {}
 
   @Get('status')
   async status(@CurrentUser() user: AuthenticatedUser, @Param('seniorId') seniorId: string): Promise<SeniorStatusView> {
     const ctx = await this.access.assertCanAccess(user.personId, seniorId);
-    const [recentAlerts, lastPresence, lastHeartRate] = await Promise.all([
+    const [recentAlerts, lastPresence, lastHeartRate, absence] = await Promise.all([
       this.alerts.recent(seniorId),
       this.signals.lastPresence(seniorId),
       this.signals.lastOfType(seniorId, 'HEART_RATE'),
+      this.absences.current(seniorId),
     ]);
-    return deriveSeniorStatus({ seniorId, recentAlerts, lastPresence, lastHeartRate }, ctx.role);
+    return deriveSeniorStatus({ seniorId, recentAlerts, lastPresence, lastHeartRate, absence }, ctx.role);
   }
 
   @Get('alerts')

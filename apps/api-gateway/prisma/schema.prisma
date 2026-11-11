@@ -113,6 +113,7 @@ model Senior {
   // Qui suit ce senior (familles, soignants) via des relations consenties.
   relationships CareRelationship[]   @relation("TrackedSenior")
   thresholds    ToleranceThreshold[]
+  absences      Absence[]
   contacts      EmergencyContact[]
   alerts        Alert[]
   signals       SignalRecord[]
@@ -257,4 +258,30 @@ model SignalRecord {
 
   @@index([seniorId, type, timestamp])
   @@map("signals")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Absence déclarée par le senior (« je m'absente », ADR 0011)
+// ─────────────────────────────────────────────────────────────
+
+/// Pourquoi une absence s'est terminée avant le retour prévu (null : elle court, ou s'est terminée à l'heure prévue).
+enum AbsenceEnd {
+  RETURNED          // « je suis rentré(e) »
+  ACTIVITY_AT_HOME  // mouvement au domicile plus de 15 min après le départ
+  REPLACED          // nouvelle absence déclarée
+}
+
+/// Pendant une absence, l'inactivité n'est pas surveillée (la chute et l'aide le restent).
+model Absence {
+  id               String      @id @default(uuid())
+  seniorId         String
+  senior           Senior      @relation(fields: [seniorId], references: [id])
+  startedAt        DateTime    @default(now())
+  /// Retour prévu, au plus 24 h après le départ ; l'absence se termine seule à cette heure.
+  expectedReturnAt DateTime
+  endedAt          DateTime?
+  endReason        AbsenceEnd?
+
+  @@index([seniorId, startedAt])
+  @@map("absences")
 }

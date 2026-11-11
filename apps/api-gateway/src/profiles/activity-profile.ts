@@ -2,7 +2,7 @@
 // des seuils envoyés par l'application. Fonctions pures, testées sans base.
 
 import { BadRequestException } from '@nestjs/common';
-import type { ActivityProfile, ToleranceThreshold } from '@project/shared-types';
+import type { Absence, ActivityProfile, ToleranceThreshold } from '@project/shared-types';
 import profileSchema from '@project/shared-types/schemas/activity-profile.schema.json';
 import Ajv from 'ajv';
 
@@ -21,8 +21,15 @@ const validateThresholds = ajv.compile<ToleranceThreshold[]>({
   items: { $ref: `${profileSchema.$id}#/definitions/ToleranceThreshold` },
 });
 
-/** Profil du contrat à partir de la base. Ordre stable : plages par heure de début, puis le seuil sans plage. */
-export function toActivityProfile(senior: { id: string; timeZone: string }, rows: readonly ThresholdRow[]): ActivityProfile {
+/**
+ * Profil du contrat à partir de la base. Ordre stable : plages par heure de début, puis le seuil sans plage.
+ * `absence` : absence en cours déclarée par le senior (ADR 0011), null s'il est chez lui.
+ */
+export function toActivityProfile(
+  senior: { id: string; timeZone: string },
+  rows: readonly ThresholdRow[],
+  absence: Absence | null = null,
+): ActivityProfile {
   const thresholds = rows
     .filter((r) => r.condition === 'MAX_INACTIVITY_MINUTES')
     .map(
@@ -33,7 +40,7 @@ export function toActivityProfile(senior: { id: string; timeZone: string }, rows
       }),
     )
     .sort((a, b) => (a.timeRange?.startTime ?? '99:99').localeCompare(b.timeRange?.startTime ?? '99:99'));
-  return { seniorId: senior.id, timeZone: senior.timeZone, thresholds };
+  return { seniorId: senior.id, timeZone: senior.timeZone, thresholds, absence };
 }
 
 /** Vérifie le corps de PUT …/thresholds ; 400 avec un message lisible sinon. */

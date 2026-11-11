@@ -10,7 +10,7 @@ Il couvre cinq familles de messages :
 | **Événements de domaine** (pré-confirmation, alerte critique) | Détection | Notification, API, appli senior | §6 |
 | **Messages rejetés** (file de rejet / DLQ) | Ingestion | Supervision, débogage | §7 |
 | **Notifications** (`NotificationRequested`) | Notification | API (remise aux personnes) | §9 |
-| **Profils d'activité** (`ActivityProfileUpdated`) | API (seuils modifiés par le médical) | Détection | §10 |
+| **Profils d'activité** (`ActivityProfileUpdated`) | API (seuils modifiés par le médical, absence déclarée par le senior) | Détection | §10 |
 
 Les topics MQTT sur lesquels circulent ces messages sont définis dans [topics-mqtt.md](topics-mqtt.md). Les versions lisibles par machine (JSON Schema + types TypeScript) sont décrites au §8.
 
@@ -485,9 +485,9 @@ Une alerte qui passe du niveau 2 au niveau 3 produit donc deux séries de notifi
 
 ## 10. Profils d'activité (seuils d'inactivité)
 
-Le profil d'activité d'un senior (DDD : `ActivityProfile`) contient les **seuils de tolérance** configurés par l'équipe médicale : au-delà de la durée indiquée sans activité, la détection lève le doute. Chaque seuil peut porter une **plage horaire** (heure locale du logement), pour distinguer le jour de la nuit ([ADR 0010](adr/0010-detection-inactivite.md)).
+Le profil d'activité d'un senior (DDD : `ActivityProfile`) contient l'**absence** déclarée par le senior (« je m'absente », [ADR 0011](adr/0011-absence-declaree.md)) et les **seuils de tolérance** configurés par l'équipe médicale : au-delà de la durée indiquée sans activité, la détection lève le doute. Chaque seuil peut porter une **plage horaire** (heure locale du logement), pour distinguer le jour de la nuit ([ADR 0010](adr/0010-detection-inactivite.md)).
 
-**Livraison à la détection** : au démarrage, la détection lit tous les profils à l'API (`GET /internal/activity-profiles`, en-tête `x-service-token`) ; ensuite, à chaque modification par le médical, l'API publie le profil complet sur `profiles/{seniorId}`. La détection garde les profils en mémoire et ne lit jamais la base.
+**Livraison à la détection** : au démarrage, la détection lit tous les profils à l'API (`GET /internal/activity-profiles`, en-tête `x-service-token`) ; ensuite, à chaque modification (seuils changés par le médical, absence déclarée, terminée ou expirée par un retour), l'API publie le profil complet sur `profiles/{seniorId}`. La détection garde les profils en mémoire et ne lit jamais la base.
 
 ### `ActivityProfileUpdated`
 
@@ -503,7 +503,8 @@ Le profil d'activité d'un senior (DDD : `ActivityProfile`) contient les **seuil
     "thresholds": [
       { "condition": "MAX_INACTIVITY_MINUTES", "durationInMinutes": 120, "timeRange": { "startTime": "07:00", "endTime": "22:00" } },
       { "condition": "MAX_INACTIVITY_MINUTES", "durationInMinutes": 600, "timeRange": { "startTime": "22:00", "endTime": "07:00" } }
-    ]
+    ],
+    "absence": { "since": "2026-01-15T09:00:00.000Z", "until": "2026-01-15T17:00:00.000Z" }
   }
 }
 ```
@@ -519,10 +520,13 @@ Le profil d'activité d'un senior (DDD : `ActivityProfile`) contient les **seuil
 | `…condition` | `MAX_INACTIVITY_MINUTES` | Seule condition gérée : durée maximale sans activité. |
 | `…durationInMinutes` | entier, 1 à 1440 | Durée tolérée. |
 | `…timeRange` | `{ startTime, endTime }` ou `null` | Plage `HH:MM` → `HH:MM` en heure locale ; elle peut passer minuit (`22:00` → `07:00`). `null` : seuil par défaut, pour les heures couvertes par aucune plage. |
+| `payload.absence` | `{ since, until }` ou `null` | Absence déclarée par le senior : de `since` au retour prévu `until` (ISO 8601 UTC, au plus 24 h). `null` : la personne est chez elle. |
 
 **Choix du seuil** à un instant donné :
 
 1. si la personne est **au lit** (dernière bande de pression du lit à l'état `PRESSED`), c'est un repos normal : le seuil **le plus long** du profil s'applique ;
 2. sinon, parmi les seuils dont la plage contient l'heure locale, le **plus court** (le plus prudent) ;
 3. sinon, le seuil sans plage, s'il existe ; sinon, pas de surveillance à cette heure.
+
+**Absence** ([ADR 0011](adr/0011-absence-declaree.md)) : pendant une absence, l'inactivité n'est **pas** surveillée (la chute et le bouton d'aide le restent). Après le retour prévu, le temps sans activité se compte **à partir de `until`** : une personne qui ne rentre pas déclenche une levée de doute après le seuil habituel. L'API termine l'absence (et republie le profil) si la personne appuie sur « je suis rentré(e) » ou si un mouvement est détecté au domicile plus de 15 minutes après le départ.
 

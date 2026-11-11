@@ -8,6 +8,7 @@ const PROFILE: ActivityProfileData = {
   seniorId: 'senior-001',
   timeZone: 'Europe/Paris',
   thresholds: [{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, timeRange: { startTime: '07:00', endTime: '22:00' } }],
+  absence: null,
 };
 let n = 0;
 const message = (payload: ActivityProfileData = PROFILE, eventId?: string) => {

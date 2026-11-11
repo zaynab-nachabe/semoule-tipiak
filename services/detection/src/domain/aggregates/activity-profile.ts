@@ -1,22 +1,44 @@
 // Agrégat ActivityProfile (DDD §4.1) : les seuils d'inactivité d'un senior, configurés par l'équipe
-// médicale (docs/format-evenements.md §10, ADR 0010). Il répond à une seule question : à cet instant,
-// au bout de combien de minutes sans activité faut-il lever le doute ?
+// médicale, et son absence déclarée (docs/format-evenements.md §10, ADR 0010 et 0011). Il répond à deux
+// questions : la personne est-elle absente ? sinon, au bout de combien de minutes sans activité lever le doute ?
 
 import type { ActivityProfile as ActivityProfileData, ToleranceThreshold } from '@project/shared-types';
 
 const MINUTES_PER_DAY = 24 * 60;
+
+/** Absence déclarée par le senior (« je m'absente ») : de `since` au retour prévu `until`. */
+export interface DeclaredAbsence {
+  readonly since: Date;
+  readonly until: Date;
+}
 
 export class ActivityProfile {
   private constructor(
     readonly seniorId: string,
     readonly timeZone: string,
     readonly thresholds: readonly ToleranceThreshold[],
+    readonly absence: DeclaredAbsence | null,
   ) {}
 
   /** Construit le profil à partir du contrat ; refuse un fuseau horaire inconnu. */
   static fromContract(data: ActivityProfileData): ActivityProfile {
     localMinutes(new Date(0), data.timeZone); // lève une RangeError si le fuseau est inconnu
-    return new ActivityProfile(data.seniorId, data.timeZone, Object.freeze(data.thresholds.map((t) => Object.freeze({ ...t }))));
+    const absence = data.absence ? Object.freeze({ since: new Date(data.absence.since), until: new Date(data.absence.until) }) : null;
+    return new ActivityProfile(data.seniorId, data.timeZone, Object.freeze(data.thresholds.map((t) => Object.freeze({ ...t }))), absence);
+  }
+
+  /** La personne est sortie : pas de surveillance de l'inactivité jusqu'au retour prévu (ADR 0011). */
+  isAbsentAt(at: Date): boolean {
+    return this.absence !== null && at.getTime() < this.absence.until.getTime();
+  }
+
+  /**
+   * Point de départ du temps sans activité : la dernière activité, ou le retour prévu s'il est plus récent
+   * (une personne qui ne rentre pas est signalée après le seuil habituel, compté depuis son retour prévu).
+   */
+  inactiveSince(lastActivityAt: Date): Date {
+    const returnAt = this.absence?.until;
+    return returnAt && returnAt.getTime() > lastActivityAt.getTime() ? returnAt : lastActivityAt;
   }
 
   /**

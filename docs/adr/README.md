@@ -14,6 +14,7 @@ Chaque ADR justifie une décision structurante : contexte, décision, conséquen
 | [0008](0008-service-de-notification.md) | Service de notification séparé, qui décide par rôle ; l'API remet aux personnes | Acceptée |
 | [0009](0009-application-web-react-nginx.md) | Une application web React + Vite, servie par nginx sur la même origine que l'API | Acceptée |
 | [0010](0010-detection-inactivite.md) | Inactivité prolongée : seuils jour/nuit lus à l'API puis mis à jour par message, niveau décidé par la fréquence cardiaque | Acceptée |
+| [0011](0011-absence-declaree.md) | « Je m'absente » : absence enregistrée par l'API et portée par le profil d'activité | Acceptée |
 
 ## Modèle
 

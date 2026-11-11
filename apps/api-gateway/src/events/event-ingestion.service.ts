@@ -1,16 +1,17 @@
 // Abonnements MQTT de l'API (docs/topics-mqtt.md §3) :
 //   alerts/#   événements de domaine -> journal des alertes + temps réel
-//   signals/#        signaux normalisés     -> historique (décision D3)
+//   signals/#        signaux normalisés     -> historique (décision D3) ; un mouvement peut terminer une absence (ADR 0011)
 //   notifications/+  notifications par rôle -> boîte de réception de chaque destinataire + temps réel (ADR 0008)
 // Session persistante (identifiant fixe) : les messages reçus pendant un redémarrage sont remis ensuite.
 
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, forwardRef } from '@nestjs/common';
 import Ajv from 'ajv';
 import { connect, type MqttClient } from 'mqtt';
 import { MQTT_QOS, Subscriptions, type DomainEvent, type NotificationRequested, type RawSignal } from '@project/shared-types';
 import domainEventSchema from '@project/shared-types/schemas/domain-event.schema.json';
 import notificationSchema from '@project/shared-types/schemas/notification.schema.json';
 import rawSignalSchema from '@project/shared-types/schemas/raw-signal.schema.json';
+import { AbsenceService } from '../absence/absence.service';
 import { AlertsService } from '../alerts/alerts.service';
 import { RecentIds } from '../common/recent-ids';
 import { API_CONFIG, type ApiConfig } from '../config';
@@ -36,6 +37,7 @@ export class EventIngestionService implements OnModuleInit, OnModuleDestroy {
     private readonly signals: SignalsService,
     private readonly notifications: NotificationsService,
     private readonly realtime: RealtimeGateway,
+    @Inject(forwardRef(() => AbsenceService)) private readonly absences: AbsenceService,
   ) {}
 
   get isConnected(): boolean {
@@ -94,6 +96,7 @@ export class EventIngestionService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       await this.signals.record(data);
+      await this.absences.onSignal(data);
       return;
     }
 

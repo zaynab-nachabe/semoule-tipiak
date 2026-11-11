@@ -17,7 +17,13 @@ describe('profil d\'activité (ADR 0010)', () => {
       seniorId: 'senior-001',
       timeZone: 'Europe/Paris',
       thresholds: [day, night, { condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 90, timeRange: null }],
+      absence: null,
     });
+  });
+
+  it("l'absence déclarée est reprise telle quelle dans le profil", () => {
+    const absence = { since: '2026-01-15T09:00:00.000Z', until: '2026-01-15T17:00:00.000Z' };
+    expect(toActivityProfile({ id: 'senior-001', timeZone: 'Europe/Paris' }, [], absence).absence).toEqual(absence);
   });
 
   it('aller-retour seuil -> ligne -> seuil', () => {

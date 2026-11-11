@@ -8,7 +8,13 @@ import { io } from 'socket.io-client';
 type Handler<K extends RealtimeMessageType> = (message: RealtimeMessageByType[K]) => void;
 type AnyHandler = (message: unknown) => void;
 
-const MESSAGE_TYPES: readonly RealtimeMessageType[] = ['alert.created', 'alert.updated', 'notification.created', 'preconfirmation.requested'];
+const MESSAGE_TYPES: readonly RealtimeMessageType[] = [
+  'alert.created',
+  'alert.updated',
+  'notification.created',
+  'preconfirmation.requested',
+  'absence.changed',
+];
 
 interface Realtime {
   readonly connected: boolean;

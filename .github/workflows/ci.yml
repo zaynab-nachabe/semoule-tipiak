@@ -28,6 +28,7 @@ jobs:
       RECOVERY_WINDOW_S: 8
       CRITICAL_ESCALATION_DELAY_S: 6
       INACTIVITY_CHECK_INTERVAL_S: 5
+      ABSENCE_GRACE_S: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,7 +56,7 @@ jobs:
 
       # Une chute envoyée par la « montre » traverse Node-RED, la détection et l'API :
       # niveaux 1, 2 et 3, ce que voit chaque rôle (temps réel et REST), règles d'accès, prise en charge ;
-      # puis l'inactivité avec un seuil d'une minute fixé par le médical.
+      # puis l'inactivité avec un seuil d'une minute fixé par le médical, et une absence déclarée.
       - name: Scénario de chute de bout en bout
         run: node apps/api-gateway/test/e2e/fall-scenario.e2e.mjs
 

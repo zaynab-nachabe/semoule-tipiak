@@ -39,6 +39,10 @@ export function useSeniorFeed(seniorId: string) {
   };
   useRealtimeMessage('alert.created', onAlert);
   useRealtimeMessage('alert.updated', onAlert);
+  // Absence déclarée ou terminée (ADR 0011) : le statut la porte.
+  useRealtimeMessage('absence.changed', (message) => {
+    if (message.seniorId === seniorId) void refresh();
+  });
 
   return { status, alerts, error, refresh };
 }

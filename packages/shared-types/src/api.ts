@@ -55,6 +55,8 @@ export interface SeniorStatusView {
   activeAlert: AlertView | null;
   /** Senior et médical ; null pour la famille. */
   latestHeartRate: MeasurementPointView | null;
+  /** Absence déclarée par le senior (« je m'absente », ADR 0011), visible de tous les rôles ; null s'il est chez lui. */
+  absence: AbsenceView | null;
 }
 
 export interface Paginated<T> {
@@ -100,6 +102,19 @@ export interface ActionAcceptedView {
   eventId: string;
 }
 
+// ─── Absence déclarée par le senior (ADR 0011) ───
+
+/** Absence en cours : depuis `since`, retour prévu à `until`. */
+export interface AbsenceView {
+  since: IsoUtcTimestamp;
+  until: IsoUtcTimestamp;
+}
+
+/** Corps de POST /seniors/{seniorId}/absence : retour prévu, dans les 24 h. */
+export interface AbsenceRequest {
+  until: IsoUtcTimestamp;
+}
+
 // ─── Seuils d'inactivité (médical, ADR 0010) ───
 
 /** Corps de PUT /seniors/{seniorId}/thresholds : remplace tous les seuils du senior. */
@@ -126,6 +141,8 @@ export interface NotificationView {
 // ─── Temps réel (WebSocket, docs/contrat-api.md §4) ───
 
 export interface RealtimeMessageByType {
+  /** Absence déclarée, terminée ou remplacée : à tous ceux qui ont accès au senior. */
+  'absence.changed': { seniorId: TopicSafeId; absence: AbsenceView | null };
   'alert.created': AlertView;
   'alert.updated': AlertView;
   'notification.created': NotificationView;
