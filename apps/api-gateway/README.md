@@ -94,7 +94,7 @@ Il envoie une chute par la « montre » et vérifie, pour chaque rôle, le temps
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `DATABASE_URL` | — | Connexion PostgreSQL (construite par `docker-compose.yml` à partir de `.env`) |
+| `DATABASE_URL` | — | Connexion PostgreSQL (construite par `docker-compose.yml` ; identifiants surchargeables dans `.env`) |
 | `MQTT_URL` | `mqtt://localhost:1883` | Broker |
 | `MQTT_CLIENT_ID` | `api-gateway` | Identifiant fixe de la session persistante |
 | `JWT_SECRET` | `dev-secret-change-me` | Secret de signature des jetons |

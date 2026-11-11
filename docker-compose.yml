@@ -1,9 +1,10 @@
 # Infrastructure et services du projet.
 # Application web : http://localhost:8080 (vues senior, famille, médical).
 #
-# Lancement :  docker compose up --build
+# Lancement :  docker compose up --build -d   (aucun fichier .env nécessaire)
 # Arrêt      :  docker compose down
-# Les identifiants viennent du fichier .env (copier .env.example en .env au premier lancement).
+# Toutes les variables ont une valeur par défaut ; un fichier .env (voir .env.example) peut les remplacer.
+# Les délais de la détection sont raccourcis par défaut pour la démonstration (valeurs des ADR dans .env.example).
 
 services:
 
@@ -30,11 +31,10 @@ services:
     image: postgres:16
     container_name: postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"   # port hôte surchargeable (ex. si un Postgres local occupe déjà 5432)
+      POSTGRES_DB: ${POSTGRES_DB:-maintien_domicile}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    # Pas de port publié sur la machine : seule l'API y accède, par le réseau Docker (évite un conflit avec un PostgreSQL local).
     volumes:
       - pgdata:/var/lib/postgresql/data   # persistance des données entre les redémarrages
     healthcheck:
@@ -76,18 +76,18 @@ services:
     environment:
       MQTT_URL: mqtt://mosquitto:1883
       MQTT_CLIENT_ID: detection
-      # Valeurs de détection (ADR 0003 à 0005). Raccourcir les délais dans .env pour une démonstration.
+      # Chute (ADR 0003 à 0005). Délais raccourcis pour la démonstration ; valeurs des ADR : 60, 90 et 300 s.
       FALL_MIN_IMPACT_G: ${FALL_MIN_IMPACT_G:-3.0}
-      PRE_CONFIRMATION_DELAY_S: ${PRE_CONFIRMATION_DELAY_S:-60}
-      RECOVERY_WINDOW_S: ${RECOVERY_WINDOW_S:-90}
-      CRITICAL_ESCALATION_DELAY_S: ${CRITICAL_ESCALATION_DELAY_S:-300}
+      PRE_CONFIRMATION_DELAY_S: ${PRE_CONFIRMATION_DELAY_S:-20}
+      RECOVERY_WINDOW_S: ${RECOVERY_WINDOW_S:-30}
+      CRITICAL_ESCALATION_DELAY_S: ${CRITICAL_ESCALATION_DELAY_S:-30}
       # Inactivité (ADR 0010) : seuils lus à l'API au démarrage, puis mis à jour par message (profiles/+).
       API_URL: http://api-gateway:3000
       SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
-      INACTIVITY_CHECK_INTERVAL_S: ${INACTIVITY_CHECK_INTERVAL_S:-60}
+      INACTIVITY_CHECK_INTERVAL_S: ${INACTIVITY_CHECK_INTERVAL_S:-10}   # ADR : 60 s
       HEART_RATE_FRESHNESS_S: ${HEART_RATE_FRESHNESS_S:-600}
       # Surveillance des capteurs (ADR 0012) : vérification des capteurs muets, seuil de batterie faible.
-      SENSOR_CHECK_INTERVAL_S: ${SENSOR_CHECK_INTERVAL_S:-60}
+      SENSOR_CHECK_INTERVAL_S: ${SENSOR_CHECK_INTERVAL_S:-10}   # ADR : 60 s
       LOW_BATTERY_PERCENT: ${LOW_BATTERY_PERCENT:-20}
     depends_on:
       mosquitto:
@@ -119,13 +119,13 @@ services:
       dockerfile: apps/api-gateway/Dockerfile
     container_name: api-gateway
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-maintien_domicile}?schema=public
       MQTT_URL: mqtt://mosquitto:1883
       MQTT_CLIENT_ID: api-gateway
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       NODE_RED_URL: http://node-red:1880   # actions du senior (« tout va bien », « aide »), ADR 0007
       SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}   # clé de la détection pour /internal (ADR 0010)
-      ABSENCE_GRACE_S: ${ABSENCE_GRACE_S:-900}   # un mouvement au domicile termine l'absence après ce délai (ADR 0011)
+      ABSENCE_GRACE_S: ${ABSENCE_GRACE_S:-30}   # un mouvement au domicile termine l'absence après ce délai (ADR 0011 : 900 s)
       PORT: 3000
     ports:
       - "3000:3000"
