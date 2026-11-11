@@ -56,9 +56,4 @@ Triée par criticité décroissante.
 
 ## 4. Lecture
 
-- **R1 était le premier risque** (C = 48) : un capteur muet est silencieux par nature. La surveillance des capteurs ([ADR 0012](adr/0012-surveillance-capteurs.md)) le rend visible et le ramène à 24. **R20** en est la contrepartie : la liste des capteurs attendus existe en deux exemplaires.
-- **R19 est désormais le premier** (C = 32) : suspendre l'inactivité pendant une sortie évite les fausses alertes (R2), mais crée un angle mort dehors. La mesure suivante la plus utile serait de prévenir la famille quand l'heure de retour est dépassée sans mouvement au domicile.
-- **R3, R5, R10, R14** (C = 24) : R3 et R5 sont maîtrisés par conception (croisement des signaux, filtrage côté serveur) ; R14 découle d'un choix permis par le sujet ; **R10** est le point faible le plus concret : une alerte bien détectée ne sert à rien si personne ne la lit, et le système sait qu'elle n'est pas lue sans encore relancer.
-- **Plusieurs risques viennent du choix « détection en mémoire, sans base »** (R17, R18) : c'est le prix d'un chemin temps réel simple et rapide. Ils sont rares, mais invisibles (D = 4).
-
 **Priorités si le projet continuait** : relance des alertes urgentes non lues (R10), alerte « pas rentré(e) » (R19), reprise de l'état de la détection au démarrage (R17), HTTPS et authentification réelle (R5, R14).
