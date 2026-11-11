@@ -13,11 +13,12 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 
 ### 1.1. Les Acteurs et Rôles
 *   **Personne Accompagnée / `Senior`** : L'acteur principal du système. Il s'agit d'une personne autonome vivant seule, qui génère des données et interagit avec le système pour confirmer ou infirmer son état de santé.
-*   **Aidant / `MedicalStaff`** : Le corps médical. Il peut s'agir d'un médecin, d'une infirmière... Il reçoit les alertes critiques et peut consulter l'historique des événements.
-*   **Proche / `FamilyMember`** : Membre de la famille ou proche du `Senior`. Il reçoit les notifications d'alerte et peut interagir avec le système pour confirmer l'état du `Senior`.
+*   **Équipe médicale / `MedicalStaff`** : Médecin, infirmière… Elle reçoit les alertes avec leur cause, consulte les mesures et l'historique, prend en charge puis clôture une alerte, règle les seuils d'inactivité et voit l'état détaillé des capteurs.
+*   **Proche / `FamilyMember`** : Membre de la famille ou proche du `Senior`. Il est prévenu à partir du niveau 2, consulte l'état de la personne et de son équipement, sans données médicales détaillées. Il n'agit pas à la place du `Senior` (seul le `Senior` répond à une levée de doute).
+*   **Relation consentie / `CareRelationship`** : Lien entre un `FamilyMember` ou un `MedicalStaff` et un `Senior`, avec son consentement (`GRANTED`, `REVOKED`…). Sans relation consentie et active, aucun accès ni aucune notification.
 
 ### 1.2. Les Concepts Métiers Fondamentaux
-*   **Profil d'Activité / `ActivityProfile`** : Le modèle de référence définissant la routine habituelle de la personne accompagnée (calculé historiquement) (ex: temps passé habituellement dans la salle de bain le matin).
+*   **Profil d'Activité / `ActivityProfile`** : La référence contre laquelle l'activité courante est comparée : seuils d'inactivité par plage horaire (configurés par l'équipe médicale), absence déclarée par le `Senior`, capteurs attendus au domicile. Il est **configuré**, pas appris à partir de l'historique (écart avec la spécification initiale, voir le README).
 *   **Seuil de Tolérance / `ToleranceThreshold`** : Durée sans activité (configurée par l'équipe médicale), éventuellement limitée à une plage horaire (jour, nuit), au-delà de laquelle une inactivité devient anormale.
 *   **Absence déclarée / `Absence`** : Sortie annoncée par le `Senior` (« je m'absente »), avec une heure de retour prévue (au plus 24 h). Pendant une absence, l'inactivité n'est pas surveillée ; la chute et le bouton d'aide le restent. Elle se termine à l'heure prévue, sur « je suis rentré(e) », ou au premier mouvement au domicile après le délai de départ. Voir [ADR 0011](adr/0011-absence-declaree.md).
 *   **Signal Brut / `RawSignal`** : Une donnée entrante, issue d'un capteur matériel (montre, détecteur PIR). Un signal seul ne déclenche jamais d'alerte.
@@ -37,7 +38,7 @@ Pour valider notre compréhension du flux de données et des règles de décisio
 ### Scénario A : Chute suspectée résolue par le Senior (Fausse Alerte)
 1.  La montre reconnaît une chute (pic d'accélération puis changement d'orientation) et génère un `RawSignal` de type *Impact* (`FALL_IMPACT`, pic de 9,8 g).
 2.  Le système de détection reçoit le signal : l'impact dépasse le seuil de 3,0 g, il initie immédiatement un processus de `PreConfirmation` (niveau 1, `PRE_ALERT`).
-3.  La montre du `Senior` vibre et affiche la question : "Avez-vous chuté ?". Un minuteur de 60 secondes démarre.
+3.  La vue senior de l'application affiche la question « Avez-vous chuté ? Tout va bien ? » avec un compte à rebours de 60 secondes (dans un déploiement réel, la montre vibrerait aussi).
 4.  Le `Senior` appuie sur "Non, tout va bien".
 5.  Le système annule la procédure. Aucune `CriticalAlert` n'est générée, évitant ainsi de déranger inutilement les `MedicalStaff`. L'événement est toutefois journalisé pour l'historique médical.
 
@@ -78,31 +79,65 @@ Afin de diviser la complexité du projet, le système est découpé en plusieurs
 Nécessaires au fonctionnement global, mais ne portant pas l'algorithmique de détection.
 
 *   **`Ingestion Gateway Context` (Implémenté via Node-RED)** : Sa responsabilité est la normalisation. Il est chargé d'unifier les protocoles entrants (MQTT, HTTP...) et les traduit en un format compréhensible par notre système.
-*   **`Profile & Consent Management Context` (Implémenté via NestJS)** : Gère le CRUD (Create, Read, Update, Delete) des `Seniors`, `FamilyMembers` et `MedicalStaffs`. Il gère les droits d'accès pour s'assurer qu'un membre de la famille ne voit pas les données médicales confidentielles.
+*   **`Profile & Consent Management Context` (implémenté dans l'API NestJS)** : Personnes, rôles et **relations consenties** ; règle d'accès (rôle × relation active) qui garantit qu'un proche ne voit pas les données médicales détaillées ; profil d'activité (seuils, absence, registre des capteurs) qu'il publie vers la détection. Il tient aussi les **modèles de lecture** destinés à l'application, construits à partir des événements des autres contextes : journal des alertes, historique des signaux, boîtes de réception, état des capteurs. Les personnes et relations viennent des données de démonstration (pas d'écran de gestion).
 
 ### 3.3. Generic Subdomains (Domaines génériques)
 Des problèmes standards déjà résolus par l'industrie, que nous intégrons sans y investir trop de logique métier.
 
-*   **`Notification Context`** : Responsable de la distribution finale des alertes : choix des destinataires selon la gravité, affichage dans l'application (vues famille et médicale) et journalisation. Un canal externe (SMS, push) pourrait s'y ajouter sans changer les autres contextes.
-*   **`Authentication Context`** : Gestion des sessions sécurisées (JWT, Login).
+*   **`Notification Context`** (service dédié, [ADR 0008](adr/0008-service-de-notification.md)) : décide **quels rôles** prévenir, avec quelle priorité et quel texte, à partir des alertes et des états de capteurs ; journalise. Il ne connaît pas les personnes. Un canal externe (SMS, push) s'y ajouterait sans changer les autres contextes.
+*   **`Authentication Context`** (dans l'API) : choix d'un compte dans une liste, sans mot de passe (hors du périmètre du sujet), puis jeton JWT qui identifie l'appelant.
 
 ### 3.4. Context Map (Cartographie des relations)
 
-Pour que ces *Bounded Contexts* collaborent sans partager le même modèle de base de données, nous définissons leurs relations et contrats de communication :
+Les *Bounded Contexts* collaborent sans partager de base de données : chacun a son propre modèle, et ils échangent des **messages définis dans un langage publié** (`packages/shared-types` : JSON Schemas, types TypeScript, documentation [format-evenements.md](format-evenements.md)). Ce contrat est le seul élément partagé ; il ne change qu'aux trois endroits à la fois, vérifiés par la CI (**Shared Kernel** réduit au contrat).
 
-1.  **Relation Ingestion -> Détection (Anti-Corruption Layer)**
-    *   L'`Ingestion Gateway Context` se place en amont (Upstream). Il agit comme une **Anti-Corruption Layer (ACL)**. Il protège notre cœur de métier en traduisant les signaux physiques en événements propres (`RawSignalReceived`). Ainsi, si on change de marque de capteur demain, seul Node-RED est impacté, le `Correlation Context` ne change pas.
-2.  **Relation Profils -> Détection (Conformist / Shared Kernel restreint)**
-    *   Le `Correlation Context` a besoin de lire les `ToleranceThresholds` stockés dans le `Profile Management Context` pour prendre ses décisions.
+```mermaid
+flowchart LR
+    ext["Capteurs et montre<br/><i>formats des fabricants</i>"]
+    ing["<b>Ingestion Gateway</b><br/>Node-RED"]
+    det["<b>Correlation & Detection</b><br/>cœur de métier"]
+    notif["<b>Notification</b>"]
+    prof["<b>Profile & Consent Management</b><br/>+ Authentication<br/>API NestJS"]
+    ext -- "formats externes" --> ing
+    ing -- "ACL · RawSignal (langage publié)" --> det
+    prof -- "Customer/Supplier · ActivityProfile<br/>(HTTP au démarrage, puis événements)" --> det
+    det -- "événements de domaine (langage publié)<br/>Notification conformiste" --> notif
+    det -- "événements de domaine<br/>modèles de lecture (journal)" --> prof
+    notif -- "Customer/Supplier · NotificationRequested<br/>(par rôle ; l'API résout les personnes)" --> prof
+    prof -- "client de l'Open Host Service<br/>POST /ingest/app" --> ing
+```
+
+1.  **Ingestion → Détection : Anti-Corruption Layer**
+    *   L'`Ingestion Gateway Context` (amont) traduit les messages des fabricants (Zigbee2MQTT, appli de la montre) en `RawSignal`. Si l'on change de marque de capteur, seul Node-RED change ; le `Correlation Context` ne voit jamais un format externe.
+    *   L'ingestion expose aussi une entrée HTTP (`POST /ingest/app`) dont l'API est cliente pour les boutons du `Senior` ([ADR 0007](adr/0007-actions-application-via-ingestion.md)) : la détection reçoit les mêmes signaux, que la personne appuie sur la montre ou dans l'application.
+2.  **Profils → Détection : Customer/Supplier**
+    *   Le `Correlation Context` (client) a besoin des `ToleranceThresholds`, de l'`Absence` et des capteurs attendus ; le `Profile & Consent Management Context` (fournisseur) les lui livre dans un `ActivityProfile` au format du langage publié.
     *   **Mise en œuvre** ([ADR 0010](adr/0010-detection-inactivite.md)) : au démarrage, la détection lit tous les profils à l'API ; ensuite, l'API publie chaque profil modifié sur `profiles/{seniorId}`. La détection garde les profils en mémoire et ne lit jamais la base.
-3.  **Relation Détection -> Notification**
+3.  **Détection → Profils : modèles de lecture**
+    *   L'API écoute les événements de domaine pour tenir le journal des alertes et l'état des capteurs ; elle s'y conforme (transitions monotones, tolérantes à l'ordre et aux doublons) et ajoute ses propres actions (prise en charge, clôture).
+4.  **Notification → Profils : Customer/Supplier**
+    *   Le `Notification Context` publie une notification **par rôle** ; l'API la remet aux personnes de ce rôle qui ont une relation consentie. La règle de consentement reste à un seul endroit, et la notification n'a pas accès aux données personnelles ([ADR 0008](adr/0008-service-de-notification.md)).
+5.  **Détection → Notification : langage publié, Notification conformiste**
     *   Le `Correlation Context` (Upstream) émet un événement asynchrone `CriticalAlertGenerated`. Le `Notification Context` (Downstream) l'écoute et se charge de prévenir les `FamilyMembers` et `MedicalStaffs`.
     *   Il émet aussi `SensorStatusChanged` (niveau `SYSTEM`) : le `Notification Context` prévient l'équipe médicale d'un capteur muet ou d'une batterie faible, et la famille si c'est la montre qui se tait ([ADR 0012](adr/0012-surveillance-capteurs.md)).
     *   **Note d'infrastructure** : Pour éviter la complexité d'un bus de messages lourd tout en respectant l'architecture événementielle, ce couplage est implémenté en réutilisant le broker MQTT (Mosquitto) déjà présent pour l'ingestion des capteurs ([ADR 0002](adr/0002-mqtt-seul-bus-de-messages.md)). Le service de détection publie ses événements sur `alerts/{seniorId}/{eventType}`, que le module de notification écoute (voir `topics-mqtt.md`).
 
 ## 4. DDD Tactique (Tactical Design)
 
-Cette section se concentre sur l'intérieur de notre *Bounded Context* principal : le **Correlation & Detection Context**. C'est ici que l'on définit les objets exacts qui seront codés dans le service de Détection dédié.
+Cette section se concentre sur l'intérieur de notre *Bounded Context* principal : le **Correlation & Detection Context**, codé dans le service `services/detection` (`src/domain`, sans aucune dépendance à MQTT, à une base ou à un framework).
+
+**Pourquoi ces éléments, et pas d'autres :**
+
+| Élément | Rôle dans ce projet |
+|---|---|
+| **Agrégat** `ActivityProfile` | Frontière de cohérence de la configuration d'un senior : seuils, absence et capteurs attendus arrivent et sont remplacés **ensemble** (un message = un profil complet), jamais à moitié. |
+| **Entité** `Alert` | Une alerte garde son identité (`alertId`) de la levée de doute à la clôture, à travers plusieurs événements ; ses transitions sont contrôlées (pas de retour en arrière). |
+| **Objets de valeur** | `PreConfirmation`, `RecoveryProgress`, `TimeRange`, `Absence`, les politiques : immuables, comparés par leur contenu ; une séquence de relèvement produit un nouvel état à chaque signal, ce qui rend les règles faciles à tester. |
+| **Services de domaine** | Les règles portent sur plusieurs objets et sur le temps (un signal, un profil, des alertes en cours, un minuteur) : elles ne tiennent dans aucun objet seul. |
+| **Événements de domaine** | Découplent la détection de ceux qui réagissent (notification, API) : elle publie sans savoir qui écoute. |
+| **Dépôts** | Isolent le stockage ; en mémoire ici (temps réel), ce qui permet de tester tout le domaine avec un temps simulé. |
+
+Des concepts DDD n'ont pas été utilisés faute de besoin : pas de *factories* dédiées (les constructeurs statiques suffisent), pas d'*event sourcing* (le journal des alertes de l'API est un modèle de lecture, pas la source de vérité de la détection).
 
 ### 4.1. Agrégats et Racines d'Agrégat (Aggregate & Aggregate Root)
 
@@ -172,7 +207,7 @@ Objets immuables définis uniquement par leurs propriétés. S'ils changent, on 
 
 ### 4.4. Événements de Domaine (Domain Events)
 
-Ils permettent aux différentes parties du système de réagir de manière asynchrone (conception événementielle interne au contexte, voir note d'infrastructure en 3.4).
+Ils permettent aux différentes parties du système de réagir de manière asynchrone (voir la note d'infrastructure en 3.4). Format détaillé : [format-evenements.md](format-evenements.md).
 
 * *Événement d'entrée :*
   * `RawSignalReceived` : Émis par Node-RED (signal normalisé sur `signals/{seniorId}/{type}`), déclenche l'analyse.
@@ -189,7 +224,7 @@ Ils permettent aux différentes parties du système de réagir de manière async
 
 ### 4.5. Services de Domaine (Domain Services)
 
-* **`CorrelationService`** : Reçoit les `RawSignalReceived`, interroge l'`ActivityProfileRepository` pour connaître les seuils, et applique les règles métiers complexes. Il s'appuie sur l'`ActivityHistory` pour raisonner sur les derniers signaux. Pour la chute (« si Chute + Inactivité > Seuil → `CriticalAlertGenerated` ») :
+* **`CorrelationService`** : Reçoit les `RawSignalReceived`, interroge l'`ActivityProfileRepository` pour connaître les seuils, et applique les règles métier qui croisent les signaux dans le temps. Il s'appuie sur l'`ActivityHistory` pour raisonner sur les derniers signaux. Pour la chute :
   * impact ≥ `minFallImpact` → `FallSuspected` → `PreConfirmationRequested` (niveau 1) ;
   * « tout va bien » ou séquence de relèvement complète → `PreConfirmationCanceled` ;
   * bouton d'aide → `CriticalAlertGenerated` (`CRITICAL`, `SENIOR_CONFIRMED`) ;
@@ -209,7 +244,7 @@ Ils permettent aux différentes parties du système de réagir de manière async
 
 ### 4.6. Dépôts (Repositories)
 
-Interfaces permettant de sauvegarder et récupérer nos agrégats sans lier le code métier à la base de données PostgreSQL.
+Interfaces permettant de sauvegarder et récupérer nos agrégats sans lier le code métier à une technologie de stockage. Dans la détection, les deux implémentations sont **en mémoire** (règle du projet : pas de base dans le chemin temps réel) ; la persistance durable est dans l'API (PostgreSQL), alimentée par les événements.
 
 * **`ActivityProfileRepository`** : `findBySeniorId(seniorId)`, `save(profile)`, `all()`. Implémentation en mémoire dans la détection, alimentée par l'API au démarrage puis par les messages `profiles/{seniorId}`.
 * **`AlertRepository`** : `findActiveAlertsBySeniorId(seniorId)`, `save(alert)`. Dans le service de détection, son implémentation garde les alertes actives **en mémoire** (pas de requête en base dans le chemin temps réel) ; l'historique durable des alertes est tenu à partir des événements publiés.
