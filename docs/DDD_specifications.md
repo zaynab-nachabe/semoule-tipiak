@@ -19,6 +19,7 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 ### 1.2. Les Concepts Métiers Fondamentaux
 *   **Profil d'Activité / `ActivityProfile`** : Le modèle de référence définissant la routine habituelle de la personne accompagnée (calculé historiquement) (ex: temps passé habituellement dans la salle de bain le matin).
 *   **Seuil de Tolérance / `ToleranceThreshold`** : Durée sans activité (configurée par l'équipe médicale), éventuellement limitée à une plage horaire (jour, nuit), au-delà de laquelle une inactivité devient anormale.
+*   **Absence déclarée / `Absence`** : Sortie annoncée par le `Senior` (« je m'absente »), avec une heure de retour prévue (au plus 24 h). Pendant une absence, l'inactivité n'est pas surveillée ; la chute et le bouton d'aide le restent. Elle se termine à l'heure prévue, sur « je suis rentré(e) », ou au premier mouvement au domicile après le délai de départ. Voir [ADR 0011](adr/0011-absence-declaree.md).
 *   **Signal Brut / `RawSignal`** : Une donnée entrante, issue d'un capteur matériel (montre, détecteur PIR). Un signal seul ne déclenche jamais d'alerte.
 *   **Fenêtre d'Inactivité / `InactivityWindow`** : Période calculée par le système représentant une absence d'activité (mouvement ou changement d'une bande de pression), dans tout le logement.
 *   **Pré-confirmation (Levée de doute) / `PreConfirmation`** : Mécanisme d'interaction directe avec le `Senior`. Le système lui demande de confirmer son état (via un écran ou une montre) avant de qualifier l'incident.
@@ -52,6 +53,17 @@ Pour valider notre compréhension du flux de données et des règles de décisio
 5.  Le système croise cette information avec le signal cardiaque de la montre : une fréquence récente et normale laisse penser que la personne dort (niveau 2, `WARNING`, puis niveau 3 sans activité après le délai) ; une montre muette ou un signal anormal fait passer **directement au niveau 3** (`CRITICAL`, cause `NO_HEART_SIGNAL`).
 6.  Le système génère une `CriticalAlert` avec le motif *Inactivité prolongée* (`PROLONGED_INACTIVITY`). Règles détaillées : [ADR 0010](adr/0010-detection-inactivite.md).
 7.  Le module de notification distribue la `CriticalAlert` selon sa gravité, dans l'application : vue famille et vue de l'équipe médicale.
+
+### Scénario C : Sortie déclarée (« je m'absente »)
+1.  Le `Senior` part faire ses courses. Dans la vue senior, il appuie sur « Je m'absente » et indique qu'il rentre vers 17 h.
+2.  Le système enregistre l'`Absence` et la transmet à la détection dans l'`ActivityProfile`. La famille voit « Sorti(e), retour prévu à 17:00 ».
+3.  Le logement reste calme tout l'après-midi : aucune `PreConfirmation` d'inactivité n'est déclenchée.
+4.  Le `Senior` rentre à 16 h et oublie de le signaler : le détecteur du salon voit du mouvement, plus de 15 minutes après son départ. Le système termine l'absence ; la surveillance de l'inactivité reprend à partir de ce moment.
+
+**Variantes du scénario C** :
+*   **Le `Senior` signale son retour** : il appuie sur « Je suis rentré(e) » ; même effet qu'en 4.
+*   **Le `Senior` ne rentre pas** : à 17 h, l'absence se termine d'elle-même. Le temps sans activité se compte à partir de 17 h : sans mouvement au domicile, une `PreConfirmation` d'inactivité arrive après le seuil habituel (2 h en journée), puis l'escalade du scénario B.
+*   **Le `Senior` chute dehors avec sa montre** : la chute reste détectée pendant l'absence (scénario A), si la montre peut joindre son smartphone.
 
 ## 3. DDD Stratégique (Strategic Design) & Context Map
 
@@ -98,10 +110,13 @@ Cette section se concentre sur l'intérieur de notre *Bounded Context* principal
     * `seniorId` (UUID)
     * `timeZone` : fuseau horaire du logement (les plages horaires sont en heure locale).
     * `thresholds` : Liste de `ToleranceThreshold`, chacun avec sa plage horaire facultative (`TimeRange`). Les habitudes de vie (`expectedRoutines`) sont portées par ces plages : pas de liste séparée.
+    * `absence` : `Absence` en cours (`{ since, until }`) ou `null` ([ADR 0011](adr/0011-absence-declaree.md)).
 
   * *Comportements (Méthodes) :*
     * `applicableThresholdMinutes(at, resting)` : seuil à appliquer à cet instant (au lit : le plus long ; sinon le plus court des seuils dont la plage contient l'heure ; sinon le seuil sans plage).
     * `evaluateInactivity(lastActivityAt, now, resting) -> boolean` : Vérifie si le délai sans activité dépasse le seuil applicable.
+    * `isAbsentAt(at) -> boolean` : la personne est sortie (avant le retour prévu) : pas de surveillance de l'inactivité.
+    * `inactiveSince(lastActivityAt) -> Date` : point de départ du temps sans activité : la dernière activité, ou le retour prévu s'il est plus récent.
     * Le profil est remplacé en entier quand l'équipe médicale le modifie (pas de `updateRoutine` séparé).
 
 ### 4.2. Entités (Entities)
@@ -140,6 +155,7 @@ Objets immuables définis uniquement par leurs propriétés. S'ils changent, on 
 
 * **`ToleranceThreshold`** : `{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, timeRange: { startTime: '07:00', endTime: '22:00' } }` (`timeRange: null` : seuil par défaut). Le niveau de l'alerte n'est pas porté par le seuil : il dépend de la fréquence cardiaque ([ADR 0010](adr/0010-detection-inactivite.md)).
 * **`TimeRange`** : `{ startTime: '22:00', endTime: '07:00' }` (heure locale ; une plage peut passer minuit).
+* **`Absence`** : `{ since: Date, until: Date }` : sortie déclarée par le `Senior`, du départ au retour prévu (au plus 24 h).
 * **`PreConfirmation`** : `{ seniorId: string, alertId: string, requestedAt: Date, expiresAt: Date }`
 * **`Severity` (Enum)** : `SYSTEM`, `PRE_ALERT`, `WARNING`, `CRITICAL` (niveaux 0 à 3, voir §1.2).
 * **`EscalationCause` (Enum)** : pourquoi une alerte est escaladée : `NO_RESPONSE` (levée de doute expirée, niveau 2), `SENIOR_CONFIRMED` (bouton d'aide pendant l'incident, niveau 3), `IMMEDIATE` (demande d'aide spontanée, niveau 3), `NO_RECOVERY` (niveau 2 resté sans relèvement ni activité, niveau 3), `NO_HEART_SIGNAL` (inactivité sans réponse ni fréquence cardiaque rassurante, niveau 3).
@@ -157,7 +173,7 @@ Ils permettent aux différentes parties du système de réagir de manière async
 * *Événement interne au contexte :*
   * `FallSuspected` : Impact au-dessus du seuil ; déclenche la demande de pré-confirmation.
 * *Événement d'entrée de configuration :*
-  * `ActivityProfileUpdated` : publié par l'API sur `profiles/{seniorId}` quand l'équipe médicale modifie les seuils (format dans `format-evenements.md` §10).
+  * `ActivityProfileUpdated` : publié par l'API sur `profiles/{seniorId}` quand l'équipe médicale modifie les seuils, ou quand le `Senior` déclare ou termine une absence (format dans `format-evenements.md` §10).
 * *Événements de sortie* (publiés sur `alerts/{seniorId}/{eventType}`, format dans `format-evenements.md` §6) :
   * `PreConfirmationRequested` : Demande d'afficher la question sur la montre ou dans la vue senior de l'application (niveau 1).
   * `PreConfirmationCanceled` : Le senior a indiqué que tout va bien, ou s'est relevé ; la procédure est annulée et journalisée.
@@ -177,7 +193,8 @@ Ils permettent aux différentes parties du système de réagir de manière async
   * temps sans activité ≥ seuil applicable → `PreConfirmationRequested` (`PROLONGED_INACTIVITY`) ;
   * « tout va bien » ou une seule activité → `PreConfirmationCanceled` ; bouton d'aide → `CRITICAL` (`SENIOR_CONFIRMED`) ;
   * délai expiré : fréquence cardiaque récente et normale → `WARNING` (`NO_RESPONSE`) puis `CRITICAL` (`NO_RECOVERY`) sans activité ; sinon `CRITICAL` (`NO_HEART_SIGNAL`) directement ;
-  * une seule alerte à la fois par senior, et pas de nouvelle alerte d'inactivité tant qu'aucune activité n'a suivi le dernier incident.
+  * une seule alerte à la fois par senior, et pas de nouvelle alerte d'inactivité tant qu'aucune activité n'a suivi le dernier incident ;
+  * pendant une `Absence` : pas de surveillance de l'inactivité ; après le retour prévu (ou la fin anticipée de l'absence), le temps sans activité se compte à partir de ce moment.
 
 * **`ActivityHistory` (structure de données)** : ce que la détection retient en mémoire des derniers signaux de chaque `Senior` pour l'inactivité (scénario B). Réduite à l'essentiel : dernière activité (horodatage et `eventId`), état de la bande du lit, dernière fréquence cardiaque, début du dernier incident. Un historique complet indexé par horodatage n'est pas nécessaire pour ces règles (et une clé `Date` ne conviendrait pas en JavaScript : deux `Date` identiques sont deux clés différentes).
 
