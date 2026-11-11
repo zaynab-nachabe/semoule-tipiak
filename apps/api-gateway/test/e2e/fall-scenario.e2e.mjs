@@ -94,7 +94,7 @@ await step('temps réel : les trois rôles se connectent', async () => {
   for (const role of Object.keys(inbox)) {
     const socket = io(API, { auth: { token: tokens[role] }, transports: ['websocket'] });
     sockets.push(socket);
-    for (const type of ['preconfirmation.requested', 'alert.created', 'alert.updated', 'notification.created', 'absence.changed']) {
+    for (const type of ['preconfirmation.requested', 'alert.created', 'alert.updated', 'notification.created', 'absence.changed', 'sensor.changed']) {
       socket.on(type, (message) => inbox[role].push({ type, message }));
     }
     await new Promise((resolve, reject) => {
@@ -349,6 +349,44 @@ await step("retour au domicile : un mouvement après le délai de départ termin
   // Remise en état : seuils d'origine, et « je suis rentré(e) » sans absence en cours ne fait rien.
   assert.equal((await api(`/seniors/${SENIOR}/thresholds`, { method: 'PUT', token: tokens.MEDICAL, body: { thresholds: originalThresholds } })).status, 200);
   assert.equal((await api(`/seniors/${SENIOR}/absence`, { method: 'DELETE', token: tokens.SENIOR })).status, 204);
+  await broker.endAsync();
+});
+
+// --- Surveillance des capteurs (ADR 0012, risque R1) ---
+
+await step('capteurs : registre visible (détaillé pour le médical, simplifié pour la famille)', async () => {
+  const medical = await api(`/seniors/${SENIOR}/sensors`, { token: tokens.MEDICAL });
+  assert.equal(medical.status, 200);
+  assert.equal(medical.body.length, 6);
+  const watch = medical.body.find((s) => s.sensorId === 'watch-001');
+  assert.equal(watch.kind, 'WATCH');
+  assert.equal(watch.expectedIntervalMinutes, 15);
+  const family = (await api(`/seniors/${SENIOR}/sensors`, { token: tokens.FAMILY })).body;
+  assert.ok(family.every((s) => s.model === null && s.expectedIntervalMinutes === null), 'la famille a la version simplifiée');
+  assert.equal((await api('/seniors/senior-999/sensors', { token: tokens.FAMILY })).status, 403);
+});
+
+await step('batterie faible : la détection le signale (niveau 0), le médical est notifié, la famille voit l\'état', async () => {
+  broker = await mqtt.connectAsync(MQTT_URL, { clientId: `e2e-sensors-${Date.now()}` });
+  const report = (battery) => broker.publishAsync('zigbee2mqtt/pir-chambre', JSON.stringify({ battery, occupancy: false }), { qos: 1 });
+  const sensorIs = (role, status) => inbox[role].some((m) => m.type === 'sensor.changed' && m.message.sensor.sensorId === 'pir-chambre' && m.message.sensor.status === status);
+
+  await report(12); // rapport périodique d'un vrai Aqara, pile presque vide
+  await waitUntil(() => sensorIs('FAMILY', 'LOW_BATTERY'), 10_000, 'batterie faible visible');
+  await waitUntil(
+    () => inbox.MEDICAL.some((m) => m.type === 'notification.created' && m.message.sensorId === 'pir-chambre'),
+    10_000,
+    'notification du médical',
+  );
+  const notification = inbox.MEDICAL.find((m) => m.type === 'notification.created' && m.message.sensorId === 'pir-chambre').message;
+  assert.deepEqual([notification.severity, notification.priority, notification.alertId], ['SYSTEM', 'INFO', null]);
+  assert.match(notification.title, /12 %/);
+  assert.ok(!inbox.FAMILY.some((m) => m.type === 'notification.created' && m.message.sensorId === 'pir-chambre'), 'pile d\'un capteur fixe : pas de notification à la famille');
+  const listed = (await api(`/seniors/${SENIOR}/sensors`, { token: tokens.MEDICAL })).body.find((s) => s.sensorId === 'pir-chambre');
+  assert.deepEqual([listed.status, listed.battery?.value], ['LOW_BATTERY', 12]);
+
+  await report(100); // pile remplacée
+  await waitUntil(() => sensorIs('MEDICAL', 'ONLINE'), 10_000, 'capteur de nouveau en ligne');
   await broker.endAsync();
 });
 
