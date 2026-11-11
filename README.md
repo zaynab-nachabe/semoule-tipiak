@@ -82,16 +82,6 @@ flowchart LR
 - La **notification** décide quels rôles prévenir ; l'**API** remet aux personnes qui ont une relation consentie, tient le journal et l'historique, et sert les trois vues (REST + WebSocket).
 - Les composants échangent par **MQTT** (un seul broker, déjà imposé par les capteurs Zigbee, [ADR 0002](docs/adr/0002-mqtt-seul-bus-de-messages.md)) quand il s'agit d'événements, et par **HTTP** quand il faut une réponse (montre, démarrage de la détection, boutons de l'application).
 
-| Couche | Technologie | Pourquoi |
-|---|---|---|
-| Ingestion | Node-RED 4.1 | MQTT et HTTP natifs, simulateur intégré ; aucune logique métier |
-| Messagerie | Mosquitto (MQTT) | Imposé par les capteurs, suffisant pour le volume ([ADR 0002](docs/adr/0002-mqtt-seul-bus-de-messages.md)) |
-| Détection, notification | TypeScript sans framework + mqtt.js | Domaine testable avec un temps simulé, images minimales ([ADR 0001](docs/adr/0001-detection-typescript-mqttjs.md), [0008](docs/adr/0008-service-de-notification.md)) |
-| API | NestJS 11 + Prisma 5 + socket.io | Droits, temps réel, migrations typées ([ADR 0006](docs/adr/0006-api-nestjs-prisma-journal.md)) |
-| Stockage | PostgreSQL 16 | Un seul système pour les relations, les mesures et le journal |
-| Application | React 19 + Vite, servie par nginx | Une application, trois vues, une seule origine ([ADR 0009](docs/adr/0009-application-web-react-nginx.md)) |
-| Contrat | `packages/shared-types` | Messages et vues définis une fois (JSON Schema + types), vérifiés par la CI |
-
 Détail complet : [docs/Architecture.md](docs/Architecture.md).
 
 ---
