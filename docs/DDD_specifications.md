@@ -25,6 +25,7 @@ Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers
 *   **Pré-confirmation (Levée de doute) / `PreConfirmation`** : Mécanisme d'interaction directe avec le `Senior`. Le système lui demande de confirmer son état (via un écran ou une montre) avant de qualifier l'incident.
 *   **Alerte Critique / `CriticalAlert`** : Un incident avéré (soit confirmé par le `Senior`, soit non infirmé après expiration de la `PreConfirmation`). Elle déclenche le protocole d'assistance. Elle porte un **niveau de gravité** : `WARNING` (non infirmée) ou `CRITICAL` (urgence confirmée).
 *   **Niveau de gravité / `Severity`** : Échelle à 4 niveaux qui dit quoi faire : `SYSTEM` (0, événement technique : batterie faible, capteur muet), `PRE_ALERT` (1, levée de doute en cours), `WARNING` (2, incident non infirmé : la famille est prévenue), `CRITICAL` (3, urgence confirmée : l'équipe médicale et la famille sont prévenues). Voir [ADR 0005](adr/0005-echelle-de-gravite.md).
+*   **Capteur muet, état d'un capteur / `SensorStatus`** : Un capteur attendu au domicile est **muet** (`OFFLINE`) s'il n'envoie plus aucun signal depuis plus que son intervalle attendu, en **batterie faible** (`LOW_BATTERY`) sous 20 %, **en ligne** (`ONLINE`) sinon. Un capteur muet est un angle mort (risque R1) : la détection le signale au niveau `SYSTEM`. Voir [ADR 0012](adr/0012-surveillance-capteurs.md).
 *   **Séquence de relèvement / `RecoveryProgress`** : Preuve que la personne s'est relevée après un impact. Un signal isolé ne suffit pas (une personne au sol peut bouger) : il faut une **activité** (mouvement ou bande de pression), puis une **stabilité** (personne sur le lit ou le fauteuil, ou déplacée dans une autre pièce). Voir [ADR 0004](adr/0004-sequence-de-relevement.md).
 
 ---
@@ -96,6 +97,7 @@ Pour que ces *Bounded Contexts* collaborent sans partager le même modèle de ba
     *   **Mise en œuvre** ([ADR 0010](adr/0010-detection-inactivite.md)) : au démarrage, la détection lit tous les profils à l'API ; ensuite, l'API publie chaque profil modifié sur `profiles/{seniorId}`. La détection garde les profils en mémoire et ne lit jamais la base.
 3.  **Relation Détection -> Notification**
     *   Le `Correlation Context` (Upstream) émet un événement asynchrone `CriticalAlertGenerated`. Le `Notification Context` (Downstream) l'écoute et se charge de prévenir les `FamilyMembers` et `MedicalStaffs`.
+    *   Il émet aussi `SensorStatusChanged` (niveau `SYSTEM`) : le `Notification Context` prévient l'équipe médicale d'un capteur muet ou d'une batterie faible, et la famille si c'est la montre qui se tait ([ADR 0012](adr/0012-surveillance-capteurs.md)).
     *   **Note d'infrastructure** : Pour éviter la complexité d'un bus de messages lourd tout en respectant l'architecture événementielle, ce couplage est implémenté en réutilisant le broker MQTT (Mosquitto) déjà présent pour l'ingestion des capteurs ([ADR 0002](adr/0002-mqtt-seul-bus-de-messages.md)). Le service de détection publie ses événements sur `alerts/{seniorId}/{eventType}`, que le module de notification écoute (voir `topics-mqtt.md`).
 
 ## 4. DDD Tactique (Tactical Design)
@@ -111,6 +113,7 @@ Cette section se concentre sur l'intérieur de notre *Bounded Context* principal
     * `timeZone` : fuseau horaire du logement (les plages horaires sont en heure locale).
     * `thresholds` : Liste de `ToleranceThreshold`, chacun avec sa plage horaire facultative (`TimeRange`). Les habitudes de vie (`expectedRoutines`) sont portées par ces plages : pas de liste séparée.
     * `absence` : `Absence` en cours (`{ since, until }`) ou `null` ([ADR 0011](adr/0011-absence-declaree.md)).
+    * `sensors` : liste des `ExpectedSensor` (capteurs attendus au domicile), surveillés par le `SensorSupervisionService` ([ADR 0012](adr/0012-surveillance-capteurs.md)).
 
   * *Comportements (Méthodes) :*
     * `applicableThresholdMinutes(at, resting)` : seuil à appliquer à cet instant (au lit : le plus long ; sinon le plus court des seuils dont la plage contient l'heure ; sinon le seuil sans plage).
@@ -156,6 +159,7 @@ Objets immuables définis uniquement par leurs propriétés. S'ils changent, on 
 * **`ToleranceThreshold`** : `{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, timeRange: { startTime: '07:00', endTime: '22:00' } }` (`timeRange: null` : seuil par défaut). Le niveau de l'alerte n'est pas porté par le seuil : il dépend de la fréquence cardiaque ([ADR 0010](adr/0010-detection-inactivite.md)).
 * **`TimeRange`** : `{ startTime: '22:00', endTime: '07:00' }` (heure locale ; une plage peut passer minuit).
 * **`Absence`** : `{ since: Date, until: Date }` : sortie déclarée par le `Senior`, du départ au retour prévu (au plus 24 h).
+* **`ExpectedSensor`** : `{ sensorId, kind: 'PIR' | 'PRESSURE_PLATE' | 'WATCH', room, location, expectedIntervalMinutes }` : capteur attendu chez le `Senior` et délai maximal entre deux de ses signaux (2 h pour les capteurs Zigbee, 15 min pour la montre).
 * **`PreConfirmation`** : `{ seniorId: string, alertId: string, requestedAt: Date, expiresAt: Date }`
 * **`Severity` (Enum)** : `SYSTEM`, `PRE_ALERT`, `WARNING`, `CRITICAL` (niveaux 0 à 3, voir §1.2).
 * **`EscalationCause` (Enum)** : pourquoi une alerte est escaladée : `NO_RESPONSE` (levée de doute expirée, niveau 2), `SENIOR_CONFIRMED` (bouton d'aide pendant l'incident, niveau 3), `IMMEDIATE` (demande d'aide spontanée, niveau 3), `NO_RECOVERY` (niveau 2 resté sans relèvement ni activité, niveau 3), `NO_HEART_SIGNAL` (inactivité sans réponse ni fréquence cardiaque rassurante, niveau 3).
@@ -163,6 +167,8 @@ Objets immuables définis uniquement par leurs propriétés. S'ils changent, on 
 * **`RecoveryProgress`** : état de la séquence de relèvement après un impact : `FALLEN` → `ACTIVE { activityAt, room }` → `RECOVERED { confirmedAt, confirmingEventId }`. Immuable : chaque signal d'activité produit un nouvel état.
 * **`FallDetectionPolicy`** : paramètres de la détection de chute : `minFallImpact` (3,0 g), `preConfirmationDelayMs` (60 s), `recoveryConfirmationWindowMs` (90 s), `criticalEscalationDelayMs` (5 min). Voir ADR 0003 à 0005.
 * **`InactivityPolicy`** : paramètres de l'inactivité : `checkIntervalMs` (vérification chaque minute), `heartRateFreshnessMs` (10 min), `normalHeartRate` (40 à 150 bpm). Voir ADR 0010.
+* **`SensorSupervisionPolicy`** : `checkIntervalMs` (vérification chaque minute), `lowBatteryPercent` (20 %). Voir ADR 0012.
+* **`SensorStatus` (Enum)** : `ONLINE`, `OFFLINE`, `LOW_BATTERY`.
 
 ### 4.4. Événements de Domaine (Domain Events)
 
@@ -179,6 +185,7 @@ Ils permettent aux différentes parties du système de réagir de manière async
   * `PreConfirmationCanceled` : Le senior a indiqué que tout va bien, ou s'est relevé ; la procédure est annulée et journalisée.
   * `PreConfirmationTimeoutExpired` : Déclenché par un minuteur interne si le senior ne répond pas ni ne se relève.
   * `CriticalAlertGenerated` : Incident avéré, avec sa gravité ; déclenche la distribution par le module de notification. Une même alerte peut être publiée deux fois : en `WARNING`, puis en `CRITICAL`.
+  * `SensorStatusChanged` : Niveau 0 (`SYSTEM`) : un capteur attendu devient muet, a une batterie faible, ou se remet à émettre. Publié seulement à un changement d'état ; ce n'est pas une alerte sur la personne (pas d'`alertId`).
 
 ### 4.5. Services de Domaine (Domain Services)
 
@@ -195,6 +202,8 @@ Ils permettent aux différentes parties du système de réagir de manière async
   * délai expiré : fréquence cardiaque récente et normale → `WARNING` (`NO_RESPONSE`) puis `CRITICAL` (`NO_RECOVERY`) sans activité ; sinon `CRITICAL` (`NO_HEART_SIGNAL`) directement ;
   * une seule alerte à la fois par senior, et pas de nouvelle alerte d'inactivité tant qu'aucune activité n'a suivi le dernier incident ;
   * pendant une `Absence` : pas de surveillance de l'inactivité ; après le retour prévu (ou la fin anticipée de l'absence), le temps sans activité se compte à partir de ce moment.
+
+* **`SensorSupervisionService`** ([ADR 0012](adr/0012-surveillance-capteurs.md)) : retient, pour chaque capteur, son dernier signal (quel qu'il soit) et sa dernière batterie (`SENSOR_HEARTBEAT`). Chaque minute, il compare le temps sans signal à l'intervalle attendu de chaque `ExpectedSensor` du profil : `OFFLINE` au-delà, `LOW_BATTERY` sous 20 %, `ONLINE` sinon (`OFFLINE` l'emporte). À chaque changement, il publie `SensorStatusChanged`. Un signal qui arrive ramène le capteur en ligne aussitôt.
 
 * **`ActivityHistory` (structure de données)** : ce que la détection retient en mémoire des derniers signaux de chaque `Senior` pour l'inactivité (scénario B). Réduite à l'essentiel : dernière activité (horodatage et `eventId`), état de la bande du lit, dernière fréquence cardiaque, début du dernier incident. Un historique complet indexé par horodatage n'est pas nécessaire pour ces règles (et une clé `Date` ne conviendrait pas en JavaScript : deux `Date` identiques sont deux clés différentes).
 

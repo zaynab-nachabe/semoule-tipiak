@@ -14,8 +14,10 @@ alerts/{seniorId}/CriticalAlertGenerated ──► notification ──► notifi
 |---|---|---|
 | `WARNING` (niveau 2) | `NORMAL` | `INFO` (« Pour information : … ») |
 | `CRITICAL` (niveau 3) | `URGENT` | `URGENT` |
+| `SYSTEM` (niveau 0) : capteur muet | `NORMAL`, pour la **montre** seulement | `INFO` |
+| `SYSTEM` (niveau 0) : batterie faible | — | `INFO` |
 
-Le texte dépend du motif et de la cause de l'escalade (`src/domain/routing.ts`), par exemple « Chute détectée, sans réponse » puis « Chute : aucun signe de relèvement ». Le senior ne reçoit pas de notification : il est sollicité par la levée de doute. Format du message publié : [`docs/format-evenements.md` §9](../../docs/format-evenements.md).
+Le texte dépend du motif et de la cause de l'escalade (`src/domain/routing.ts`), par exemple « Chute détectée, sans réponse » puis « Chute : aucun signe de relèvement ». Le senior ne reçoit pas de notification : il est sollicité par la levée de doute. Les états de capteurs (`alerts/+/SensorStatusChanged`, [ADR 0012](../../docs/adr/0012-surveillance-capteurs.md)) produisent des notifications **sans alerte** (`alertId` à `null`, `sensorId` renseigné) ; un capteur de nouveau en ligne n'en produit pas. Format du message publié : [`docs/format-evenements.md` §9](../../docs/format-evenements.md).
 
 ## Organisation
 
@@ -23,7 +25,9 @@ Le texte dépend du motif et de la cause de l'escalade (`src/domain/routing.ts`)
 src/
 ├── domain/
 │   ├── routing.ts               règle de routage et textes (fonctions pures)
-│   └── notification-service.ts  une alerte -> une notification par rôle
+│   ├── notification-service.ts  une alerte -> une notification par rôle
+│   ├── sensor-routing.ts        état d'un capteur -> rôles, priorité, texte (ADR 0012)
+│   └── sensor-notification-service.ts  un état de capteur -> une notification par rôle
 ├── infrastructure/              adaptateurs MQTT (validation, dédoublonnage, publication), configuration, journal
 ├── app.ts                       assemblage
 └── main.ts                      point d'entrée du conteneur

@@ -25,6 +25,7 @@ src/
 ├── actions/       transmission des actions du senior à Node-RED (ADR 0007)
 ├── profiles/      seuils d'inactivité : lecture/modification (médical), point d'accès de la détection (ADR 0010)
 ├── absence/       « je m'absente » : déclaration, fin (bouton ou mouvement au domicile), publication (ADR 0011)
+├── sensors/       registre des capteurs, état publié par la détection, dernier signal et batterie (ADR 0012)
 ├── events/        abonnements MQTT (alerts/#, signals/#, notifications/+), validation contre les JSON Schemas
 ├── realtime/      WebSocket (socket.io)
 ├── health/        /health (healthcheck Docker)
@@ -50,6 +51,7 @@ prisma/            schéma et migrations (première version : lot B1, Anaïs Lac
 | `POST` | `/seniors/{seniorId}/alerts/{alertId}/cancel` | senior | « Tout va bien » pendant la levée de doute → `202` (sinon `409`) ; transmis à Node-RED |
 | `POST` | `/seniors/{seniorId}/help` | senior | « J'ai besoin d'aide » → `202` ; transmis à Node-RED |
 | `GET` / `PUT` | `/seniors/{seniorId}/thresholds` | médical | Seuils d'inactivité (`ActivityProfile`) ; `PUT` remplace tout et publie le profil sur `profiles/{seniorId}` |
+| `GET` | `/seniors/{seniorId}/sensors` | tous | État des capteurs (`SensorHealthView`), détaillé pour le médical |
 | `POST` / `DELETE` | `/seniors/{seniorId}/absence` | senior | « Je m'absente » (`{ until }`, au plus 24 h) / « je suis rentré(e) » ; republie le profil sur `profiles/{seniorId}` |
 | `GET` | `/internal/activity-profiles` | détection (clé `x-service-token`) | Tous les profils, lus par la détection au démarrage |
 | `GET` | `/me/notifications?unreadOnly=true` | tous | Boîte de réception de l'appelant |
@@ -59,7 +61,7 @@ prisma/            schéma et migrations (première version : lot B1, Anaïs Lac
 
 Toutes les routes `/seniors/…` exigent `Authorization: Bearer <jeton>` (sinon `401`) et une relation consentie avec le senior (sinon `403`). Erreurs au format `{ "error": { "code", "message" } }`.
 
-**Temps réel** (socket.io, même port) : se connecter avec `auth: { token }`. Messages : `ready`, `preconfirmation.requested` (senior uniquement), `alert.created` / `alert.updated` (senior pour ses alertes ; famille et médical à partir de l'escalade, niveau 2 et plus), `notification.created` (au seul destinataire), `absence.changed`. Les actions du senior répondent `202` : leur effet arrive par ce canal. Si Node-RED ne répond pas, `503`.
+**Temps réel** (socket.io, même port) : se connecter avec `auth: { token }`. Messages : `ready`, `preconfirmation.requested` (senior uniquement), `alert.created` / `alert.updated` (senior pour ses alertes ; famille et médical à partir de l'escalade, niveau 2 et plus), `notification.created` (au seul destinataire), `absence.changed`, `sensor.changed`. Les actions du senior répondent `202` : leur effet arrive par ce canal. Si Node-RED ne répond pas, `503`.
 
 ## Lancer
 
@@ -70,7 +72,7 @@ docker compose up --build -d
 curl http://localhost:3000/auth/users
 ```
 
-Au démarrage, le conteneur applique les migrations, insère les données de démonstration (René le senior `senior-001`, Marie sa fille, Dr Martin), puis lance l'API.
+Au démarrage, le conteneur applique les migrations, insère les données de démonstration (René le senior `senior-001`, Marie sa fille, Dr Martin, les 6 capteurs du logement), puis lance l'API.
 
 ## Tests
 
@@ -86,7 +88,7 @@ PRE_CONFIRMATION_DELAY_S=6 CRITICAL_ESCALATION_DELAY_S=6 docker compose up -d --
 PRE_CONFIRMATION_DELAY_S=6 CRITICAL_ESCALATION_DELAY_S=6 node apps/api-gateway/test/e2e/fall-scenario.e2e.mjs
 ```
 
-Il envoie une chute par la « montre » et vérifie, pour chaque rôle, le temps réel (niveaux 1, 2, 3), les notifications, la consultation REST, les règles d'accès (401, 403), la prise en charge et la clôture ; puis « tout va bien » et « j'ai besoin d'aide » envoyés depuis l'API, une inactivité avec un seuil d'une minute fixé par le médical (`INACTIVITY_CHECK_INTERVAL_S=5` pour aller vite), une absence déclarée puis terminée par un mouvement (`ABSENCE_GRACE_S=5`), et l'application web servie par nginx (`WEB_URL`, défaut `http://localhost:8080`).
+Il envoie une chute par la « montre » et vérifie, pour chaque rôle, le temps réel (niveaux 1, 2, 3), les notifications, la consultation REST, les règles d'accès (401, 403), la prise en charge et la clôture ; puis « tout va bien » et « j'ai besoin d'aide » envoyés depuis l'API, une inactivité avec un seuil d'une minute fixé par le médical (`INACTIVITY_CHECK_INTERVAL_S=5` pour aller vite), une absence déclarée puis terminée par un mouvement (`ABSENCE_GRACE_S=5`), une batterie faible signalée puis rétablie, et l'application web servie par nginx (`WEB_URL`, défaut `http://localhost:8080`).
 
 ## Configuration
 
@@ -106,7 +108,6 @@ Il envoie une chute par la « montre » et vérifie, pour chaque rôle, le temps
 
 | Élément du contrat | Étape prévue |
 |---|---|
-| `GET …/sensors` | Surveillance des capteurs |
 | `GET …/activity` (tendances d'activité), `…/contacts` | Non prévus dans cette version |
 
 ## Limites connues

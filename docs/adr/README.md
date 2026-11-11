@@ -15,6 +15,7 @@ Chaque ADR justifie une décision structurante : contexte, décision, conséquen
 | [0009](0009-application-web-react-nginx.md) | Une application web React + Vite, servie par nginx sur la même origine que l'API | Acceptée |
 | [0010](0010-detection-inactivite.md) | Inactivité prolongée : seuils jour/nuit lus à l'API puis mis à jour par message, niveau décidé par la fréquence cardiaque | Acceptée |
 | [0011](0011-absence-declaree.md) | « Je m'absente » : absence enregistrée par l'API et portée par le profil d'activité | Acceptée |
+| [0012](0012-surveillance-capteurs.md) | Surveillance des capteurs par la détection, registre dans l'API, notifications de niveau 0 | Acceptée |
 
 ## Modèle
 
