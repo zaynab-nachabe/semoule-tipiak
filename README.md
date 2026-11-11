@@ -88,16 +88,15 @@ Détail complet : [docs/Architecture.md](docs/Architecture.md).
 
 ## 4. Lancer le projet
 
-**Prérequis : Docker** (Docker Desktop, ou Docker Engine avec Compose v2). Rien d'autre : ni Node.js, ni base de données, ni broker sur la machine.
+**Prérequis : Docker** (Docker Desktop, ou Docker Engine avec Compose v2) démarré. Rien d'autre : ni Node.js, ni base de données, ni broker, ni fichier de configuration.
+
+Depuis le dossier du projet, **une seule commande** :
 
 ```bash
-git clone https://github.com/zaynab-nachabe/semoule-tipiak.git
-cd semoule-tipiak
-cp .env.example .env              # PowerShell : Copy-Item .env.example .env
-docker compose up --build -d
+docker compose up --build -d --wait
 ```
 
-Le premier lancement télécharge les images et construit les services (quelques minutes). Ensuite :
+Le premier lancement télécharge les images et construit les services (quelques minutes). Quand la commande rend la main, tout est prêt :
 
 | Adresse | Quoi |
 |---|---|
@@ -114,21 +113,13 @@ docker compose down               # arrêter (garder les données)
 docker compose down -v            # arrêter et repartir de zéro
 ```
 
-**Si un port est déjà pris** (8080 ou 5432) : mettre par exemple `WEB_PORT=8081` ou `POSTGRES_PORT=5433` dans `.env`, puis relancer.
+Ports utilisés sur la machine : 8080, 1880, 3000 et 1883 (PostgreSQL n'est pas exposé). **Si le port 8080 est déjà pris**, créer un fichier `.env` contenant `WEB_PORT=8081` et relancer la commande ; l'application est alors sur http://localhost:8081.
 
 ---
 
 ## 5. Vérifier les choix d'architecture : démonstration
 
-Les délais réels (levée de doute 60 s, passage au niveau 3 après 5 min…) sont longs pour une démonstration. Pour les raccourcir, renseigner dans `.env` puis relancer `docker compose up -d` :
-
-```bash
-PRE_CONFIRMATION_DELAY_S=20
-RECOVERY_WINDOW_S=30
-CRITICAL_ESCALATION_DELAY_S=30
-INACTIVITY_CHECK_INTERVAL_S=10
-ABSENCE_GRACE_S=30
-```
+Pour que tout se voie en quelques secondes, les délais sont **raccourcis par défaut** : levée de doute 20 s (60 s dans les ADR), passage au niveau 3 après 30 s (5 min), fin d'absence au premier mouvement après 30 s (15 min). Les valeurs d'un vrai déploiement sont dans [.env.example](.env.example).
 
 Les boutons cités sont dans l'onglet **Simulateur** de Node-RED (http://localhost:1880) : cliquer sur le carré à gauche d'un bouton envoie le message réel du capteur.
 

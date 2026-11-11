@@ -5,28 +5,24 @@ Socle du projet, lancé avec Docker Compose : broker MQTT, base de données, pas
 ## Prérequis
 
 - [Docker](https://www.docker.com/) et Docker Compose installés (rien d'autre : Node.js n'est pas nécessaire sur la machine)
-- Les ports suivants libres sur la machine : `8080` (application web), `1883` (MQTT), `5432` (PostgreSQL), `1880` (Node-RED), `3000` (API). `8080` et `5432` se changent dans `.env` (`WEB_PORT`, `POSTGRES_PORT`) s'ils sont déjà pris.
+- Les ports suivants libres sur la machine : `8080` (application web), `1883` (MQTT), `1880` (Node-RED), `3000` (API). PostgreSQL n'est pas exposé. `8080` se change avec `WEB_PORT` dans un fichier `.env` s'il est déjà pris.
 
 ## Premier lancement
 
-Depuis la **racine du projet** :
+Depuis la **racine du projet**, sans fichier de configuration (chaque variable a une valeur par défaut, voir `.env.example` pour les changer) :
 
 ```bash
-# Créer le fichier de variables d'environnement (une seule fois)
-cp .env.example .env
-
-# Construire les images des services et lancer le tout
-docker compose up --build
+docker compose up --build -d --wait
 ```
 
-Au premier lancement, Docker télécharge les images et construit celle de la détection (quelques minutes).
+Au premier lancement, Docker télécharge les images et construit les services (quelques minutes). La commande rend la main quand tout est prêt.
 
 ## Ce qui démarre
 
 | Service | Rôle | Accès |
 |---|---|---|
 | **mosquitto** | Broker MQTT : capteurs (via Zigbee2MQTT) et messagerie interne | `localhost:1883` |
-| **postgres** | Base de données relationnelle | `localhost:5432` (base/identifiants définis dans `.env`) |
+| **postgres** | Base de données relationnelle | Réseau Docker seulement (`postgres:5432`) ; pour l'inspecter : `docker compose exec postgres psql -U app maintien_domicile` |
 | **node-red** | Passerelle d'ingestion (et simulateur de capteurs) | Interface web : http://localhost:1880 |
 | **detection** | Corrélation des signaux, levée de doute, alertes | Journal : `docker compose logs -f detection` |
 | **notification** | Qui prévenir (famille, médical) selon la gravité d'une alerte | Journal : `docker compose logs -f notification` |
@@ -54,8 +50,6 @@ docker compose down      # arrête et supprime proprement les conteneurs
 ```
 
 > Toujours arrêter avec `docker compose down` plutôt que de fermer la fenêtre. Sinon un conteneur peut rester actif et provoquer une erreur « container name already in use » au prochain lancement.
-
-Pour lancer en arrière-plan (sans bloquer le terminal) : `docker compose up --build -d`.
 
 ## Dépannage
 

@@ -34,9 +34,9 @@ Dockerfile        construction (Node) puis nginx
 
 ## Lancer
 
-Avec toute la pile (recommandé) : `docker compose up --build -d`, puis http://localhost:8080. Si le port 8080 est déjà pris, mettre par exemple `WEB_PORT=8081` dans `.env`.
+Avec toute la pile (recommandé) : `docker compose up --build -d --wait`, puis http://localhost:8080. Si le port 8080 est déjà pris, mettre par exemple `WEB_PORT=8081` dans un fichier `.env`.
 
-Pour une démonstration, raccourcir les délais de la détection dans `.env` (`PRE_CONFIRMATION_DELAY_S=20`, `CRITICAL_ESCALATION_DELAY_S=30`…), puis provoquer une chute depuis le simulateur de Node-RED (http://localhost:1880, onglet **Simulateur**, « Montre : chute ») : la vue senior affiche la question, la famille et le médical reçoivent l'alerte si personne ne répond.
+Les délais de la détection sont raccourcis par défaut pour la démonstration : provoquer une chute depuis le simulateur de Node-RED (http://localhost:1880, onglet **Simulateur**, « Montre : chute ») : la vue senior affiche la question, la famille et le médical reçoivent l'alerte si personne ne répond.
 
 En développement (rechargement à chaud), avec l'API qui tourne sur `localhost:3000` :
 

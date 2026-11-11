@@ -73,7 +73,7 @@ Lus dans les variables d'environnement (voir `docker-compose.yml`). Laisser une 
 | `API_URL` | `http://localhost:3000` | API qui fournit les profils au démarrage (`http://api-gateway:3000` sous Docker) | ADR 0010 |
 | `SERVICE_TOKEN` | `dev-service-token-change-me` | Clé partagée avec l'API pour `/internal/activity-profiles` | ADR 0010 |
 
-Pour une démonstration, raccourcir les délais dans `.env` (par exemple `PRE_CONFIRMATION_DELAY_S=15` et `CRITICAL_ESCALATION_DELAY_S=30`).
+Les défauts ci-dessus sont ceux du code (valeurs des ADR). `docker-compose.yml` les raccourcit pour la démonstration (levée de doute 20 s, niveau 3 après 30 s, vérifications toutes les 10 s) ; un fichier `.env` peut les remplacer (voir `.env.example`).
 
 ## Lancer
 
