@@ -1,15 +1,6 @@
 # Modélisation DDD (Domain-Driven Design)
-## Projet : Maintien à domicile des seniors et coordination des soins
-
-Ce document définit l'architecture métier du système en appliquant les concepts du Domain-Driven Design (DDD). L'objectif est d'aligner la conception logicielle avec les exigences du métier (santé, sécurité...). 
-
-Pour garantir une transition fluide vers le code, les concepts métiers (en français) sont associés à la version anglaise pour correspondre à notre implémentation technique.
-
----
 
 ## 1. Langage Ubiquitaire (Ubiquitous Language)
-
-Afin d'éviter toute ambiguïté entre les développeurs et les experts métiers (corps médical, famille), nous définissons le vocabulaire strict qui sera utilisé dans la documentation et son équivalent dans le code.
 
 ### 1.1. Les Acteurs et Rôles
 *   **Personne Accompagnée / `Senior`** : L'acteur principal du système. Il s'agit d'une personne autonome vivant seule, qui génère des données et interagit avec le système pour confirmer ou infirmer son état de santé.
@@ -69,8 +60,6 @@ Pour valider notre compréhension du flux de données et des règles de décisio
 
 ## 3. DDD Stratégique (Strategic Design) & Context Map
 
-Afin de diviser la complexité du projet, le système est découpé en plusieurs sous-domaines (Subdomains) selon leur valeur métier.
-
 ### 3.1. Core Subdomain (Cœur de métier)
 
 *   **`Correlation & Detection Context`** : Bounded Context chargé de recevoir le flux d'événements, d'appliquer les règles de corrélation temporelles (croisement des `RawSignals`), de les comparer au `ActivityProfile` et de statuer sur le déclenchement d'une `CriticalAlert` ou d'une `PreConfirmation`. 
@@ -82,7 +71,6 @@ Nécessaires au fonctionnement global, mais ne portant pas l'algorithmique de d�
 *   **`Profile & Consent Management Context` (implémenté dans l'API NestJS)** : Personnes, rôles et **relations consenties** ; règle d'accès (rôle × relation active) qui garantit qu'un proche ne voit pas les données médicales détaillées ; profil d'activité (seuils, absence, registre des capteurs) qu'il publie vers la détection. Il tient aussi les **modèles de lecture** destinés à l'application, construits à partir des événements des autres contextes : journal des alertes, historique des signaux, boîtes de réception, état des capteurs. Les personnes et relations viennent des données de démonstration (pas d'écran de gestion).
 
 ### 3.3. Generic Subdomains (Domaines génériques)
-Des problèmes standards déjà résolus par l'industrie, que nous intégrons sans y investir trop de logique métier.
 
 *   **`Notification Context`** (service dédié, [ADR 0008](adr/0008-service-de-notification.md)) : décide **quels rôles** prévenir, avec quelle priorité et quel texte, à partir des alertes et des états de capteurs ; journalise. Il ne connaît pas les personnes. Un canal externe (SMS, push) s'y ajouterait sans changer les autres contextes.
 *   **`Authentication Context`** (dans l'API) : choix d'un compte dans une liste, sans mot de passe (hors du périmètre du sujet), puis jeton JWT qui identifie l'appelant.
@@ -142,7 +130,6 @@ Des concepts DDD n'ont pas été utilisés faute de besoin : pas de *factories* 
 ### 4.1. Agrégats et Racines d'Agrégat (Aggregate & Aggregate Root)
 
 * **Aggregate Root : `ActivityProfile`**
-  C'est l'objet principal qui garantit la cohérence des règles pour un senior donné. Il centralise les paramètres pour éviter que la logique de détection ne lise des données incohérentes.
   * *Attributs :*
     * `seniorId` (UUID)
     * `timeZone` : fuseau horaire du logement (les plages horaires sont en heure locale).
@@ -159,8 +146,6 @@ Des concepts DDD n'ont pas été utilisés faute de besoin : pas de *factories* 
 
 ### 4.2. Entités (Entities)
 
-Objets possédant une identité unique qui évolue dans le temps (cycle de vie).
-
 * **`Alert`**
   * *Attributs :* `alertId`, `seniorId`, `createdAt`, `status` (Enum: PENDING, PRE_CONFIRMING, ESCALATED, RESOLVED), `reason` (Enum: FALL_DETECTED, PROLONGED_INACTIVITY, HELP_REQUESTED), `severity` (`WARNING` ou `CRITICAL`, renseignée à l'escalade).
   * *Comportements :*
@@ -172,8 +157,6 @@ Objets possédant une identité unique qui évolue dans le temps (cycle de vie).
   * *Cycle de vie :* `PENDING → PRE_CONFIRMING → ESCALATED (WARNING → CRITICAL) | RESOLVED`.
 
 ### 4.3. Objets de Valeur (Value Objects) & Enums
-
-Objets immuables définis uniquement par leurs propriétés. S'ils changent, on crée un nouvel objet. Nous utilisons des `Enums` stricts pour éviter les erreurs de frappe dans le code.
 
 > L'enum `SignalType` et les payloads ci-dessous doivent rester identiques à ceux du document *Format commun des événements*. Toute modification se répercute dans les deux.
 
@@ -240,7 +223,7 @@ Ils permettent aux différentes parties du système de réagir de manière async
 
 * **`SensorSupervisionService`** ([ADR 0012](adr/0012-surveillance-capteurs.md)) : retient, pour chaque capteur, son dernier signal (quel qu'il soit) et sa dernière batterie (`SENSOR_HEARTBEAT`). Chaque minute, il compare le temps sans signal à l'intervalle attendu de chaque `ExpectedSensor` du profil : `OFFLINE` au-delà, `LOW_BATTERY` sous 20 %, `ONLINE` sinon (`OFFLINE` l'emporte). À chaque changement, il publie `SensorStatusChanged`. Un signal qui arrive ramène le capteur en ligne aussitôt.
 
-* **`ActivityHistory` (structure de données)** : ce que la détection retient en mémoire des derniers signaux de chaque `Senior` pour l'inactivité (scénario B). Réduite à l'essentiel : dernière activité (horodatage et `eventId`), état de la bande du lit, dernière fréquence cardiaque, début du dernier incident. Un historique complet indexé par horodatage n'est pas nécessaire pour ces règles (et une clé `Date` ne conviendrait pas en JavaScript : deux `Date` identiques sont deux clés différentes).
+* **`ActivityHistory` (structure de données)** : ce que la détection retient en mémoire des derniers signaux de chaque `Senior` pour l'inactivité (scénario B). Réduite à l'essentiel : dernière activité (horodatage et `eventId`), état de la bande du lit, dernière fréquence cardiaque, début du dernier incident. Un historique complet indexé par horodatage n'est pas nécessaire pour ces règles.
 
 ### 4.6. Dépôts (Repositories)
 
