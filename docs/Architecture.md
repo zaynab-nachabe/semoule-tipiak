@@ -1,7 +1,5 @@
 # Architecture logicielle
 
-Ce document présente l'architecture du système à plusieurs niveaux de détail, selon le **modèle C4** : le contexte (niveau 1), les conteneurs (niveau 2), puis les composants des deux conteneurs qui portent la logique (niveau 3). Il décrit ensuite les échanges dans le temps, la collecte, le traitement et le stockage des données, le déploiement et les choix technologiques.
-
 Les décisions structurantes sont justifiées dans les [ADR](adr/README.md) ; le vocabulaire métier et la modélisation dans le [DDD](DDD_specifications.md) ; les risques dans la [matrice des risques](Matrice_risques.md).
 
 **Principes qui guident l'ensemble**
@@ -35,14 +33,6 @@ flowchart TB
     systeme -- "alertes et causes, mesures, capteurs ;<br/>prend en charge, clôture, règle les seuils" --> medical
     medical -. "configure" .-> systeme
 ```
-
-| Acteur ou système | Ce qu'il apporte | Ce qu'il reçoit |
-|---|---|---|
-| **Personne âgée** | Réponses à la levée de doute, demande d'aide, déclaration d'absence | La question « Tout va bien ? », son état, sa fréquence cardiaque, ses alertes |
-| **Famille** | — (consultation) | Les alertes à partir du niveau 2, l'état de la personne et de l'équipement, sans données médicales détaillées |
-| **Équipe médicale** | Prise en charge et clôture des alertes, seuils d'inactivité | Les alertes avec leur cause, la fréquence cardiaque et son historique, l'état détaillé des capteurs |
-| **Capteurs Zigbee** (simulés) | Messages au format réel de Zigbee2MQTT, sur `zigbee2mqtt/{sensorId}` | — |
-| **Montre** (simulée) | Messages HTTP de son appli compagnon, sur `POST /ingest/watch` | — |
 
 > Les capteurs sont simulés (onglet **Simulateur** de Node-RED), mais chacun reproduit un appareil du commerce et ses messages réels : voir [services/ingestion/README.md](../services/ingestion/README.md#capteurs-réels).
 
@@ -88,15 +78,15 @@ flowchart LR
     users -- "HTTP :8080" --> web
 ```
 
-| Conteneur | Technologie | Responsabilité | Entrées | Sorties | État |
-|---|---|---|---|---|---|
-| **Ingestion** | Node-RED 4.1.12 | Couche anti-corruption : traduit chaque format de capteur en signal normalisé ; rejette les messages invalides (file de rejet). Aucune logique métier. | `zigbee2mqtt/+` (MQTT), `POST /ingest/watch` et `/ingest/app` (HTTP) | `signals/{seniorId}/{type}`, `ingestion/rejected` | Registre des capteurs (dans le flow) |
-| **Broker** | Mosquitto 2 | Bus de messages unique : capteurs et échanges internes ([ADR 0002](adr/0002-mqtt-seul-bus-de-messages.md)) | — | — | Sessions persistantes et messages en attente (volume) |
-| **Détection** | TypeScript, mqtt.js, esbuild ([ADR 0001](adr/0001-detection-typescript-mqttjs.md)) | Cœur de métier : chute, inactivité, échelle de gravité, surveillance des capteurs | `signals/+/+`, `profiles/+`, profils lus à l'API au démarrage | `alerts/{seniorId}/{eventType}` | **En mémoire** : alertes en cours, dernières activités, état des capteurs |
-| **Notification** | TypeScript, mqtt.js ([ADR 0008](adr/0008-service-de-notification.md)) | Décide quels **rôles** prévenir, avec quelle priorité et quel texte ; journal | `alerts/+/CriticalAlertGenerated`, `alerts/+/SensorStatusChanged` | `notifications/{seniorId}` | Aucun |
-| **API** | NestJS 11, Prisma 5, socket.io ([ADR 0006](adr/0006-api-nestjs-prisma-journal.md)) | Point d'entrée unique de l'application : authentification, droits, projection par rôle, journal des alertes, historique des signaux, boîtes de réception, absences, seuils, registre des capteurs | REST/WebSocket de l'application, `alerts/#`, `signals/#`, `notifications/+` | REST/WebSocket, `profiles/{seniorId}`, `POST /ingest/app` | Base PostgreSQL |
-| **Base** | PostgreSQL 16 | Seul stockage durable | — | — | Volume `pgdata` |
-| **Application web** | React 19, Vite, nginx ([ADR 0009](adr/0009-application-web-react-nginx.md)) | Une application, trois vues ; nginx relaie `/api` et `/socket.io` vers l'API (une seule origine) | Navigateur | — | Jeton de session dans l'onglet |
+| Conteneur | Technologie | Responsabilité | État |
+|---|---|---|---|
+| **Ingestion** | Node-RED 4.1.12 | Couche anti-corruption : traduit chaque format de capteur en signal normalisé ; rejette les messages invalides (file de rejet). Aucune logique métier. | Registre des capteurs (dans le flow) |
+| **Broker** | Mosquitto 2 | Bus de messages unique : capteurs et échanges internes ([ADR 0002](adr/0002-mqtt-seul-bus-de-messages.md)) | Sessions persistantes et messages en attente (volume) |
+| **Détection** | TypeScript, mqtt.js, esbuild ([ADR 0001](adr/0001-detection-typescript-mqttjs.md)) | Cœur de métier : chute, inactivité, échelle de gravité, surveillance des capteurs | **En mémoire** : alertes en cours, dernières activités, état des capteurs |
+| **Notification** | TypeScript, mqtt.js ([ADR 0008](adr/0008-service-de-notification.md)) | Décide quels **rôles** prévenir, avec quelle priorité et quel texte ; journal | Aucun |
+| **API** | NestJS 11, Prisma 5, socket.io ([ADR 0006](adr/0006-api-nestjs-prisma-journal.md)) | Point d'entrée unique de l'application : authentification, droits, projection par rôle, journal des alertes, historique des signaux, boîtes de réception, absences, seuils, registre des capteurs | Base PostgreSQL |
+| **Base** | PostgreSQL 16 | Seul stockage durable | Volume `pgdata` |
+| **Application web** | React 19, Vite, nginx ([ADR 0009](adr/0009-application-web-react-nginx.md)) | Une application, trois vues ; nginx relaie `/api` et `/socket.io` vers l'API (une seule origine) | Jeton de session dans l'onglet |
 
 ### Pourquoi ce découpage
 
@@ -192,7 +182,7 @@ flowchart TB
 
 | Composant | Rôle |
 |---|---|
-| Garde + règle d'accès | Jeton JWT obligatoire ; accès à un senior seulement avec une relation **consentie et non révoquée** (ou être ce senior) ; capacités par rôle (seul le médical règle les seuils, seul le senior déclare une absence…). Vérifié à chaque requête : une révocation prend effet immédiatement. |
+| Garde + règle d'accès | Jeton JWT obligatoire ; accès à un senior seulement avec une relation **consentie et non révoquée** (ou être ce senior) ; capacités par rôle (seul le médical règle les seuils, seul le senior déclare une absence…). Vérifié à chaque requête REST ; une connexion temps réel déjà ouverte n'est revérifiée qu'à sa reconnexion (risque R6). |
 | Projections | Une même donnée est projetée selon le rôle : la famille reçoit la gravité mais pas la cause clinique ni la fréquence cardiaque ; le senior ni l'une ni l'autre. |
 | Journal des alertes | Construit à partir des événements de domaine, avec des transitions **monotones** (un message en retard ou en double ne fait pas revenir une alerte en arrière). |
 | Temps réel | socket.io : à la connexion, le client rejoint une salle par senior accessible et une salle personnelle (boîte de réception). |
@@ -295,7 +285,7 @@ Tout message que l'ingestion ne peut pas normaliser (JSON invalide, capteur inco
 
 - **Détection, au fil de l'eau et en mémoire** : chaque signal met à jour l'état du senior (dernière activité, au lit ou non, dernière fréquence cardiaque, état de chaque capteur) ; des minuteurs gèrent les délais (levée de doute 60 s, relèvement 90 s, passage au niveau 3 après 5 min) ; une vérification chaque minute compare le temps sans activité aux seuils, et le silence des capteurs à leur intervalle attendu.
 - **Croisement des signaux** : une chute n'est annulée que par une **séquence** de deux signaux (activité puis stabilité, [ADR 0004](adr/0004-sequence-de-relevement.md)) ; une inactivité sans réponse est jugée avec la fréquence cardiaque ([ADR 0010](adr/0010-detection-inactivite.md)).
-- **Agrégation pour l'affichage, dans l'API** : journal des alertes construit à partir des événements, statut courant reconstruit à partir des derniers signaux, état des capteurs enrichi du dernier signal et de la batterie.
+- **Agrégation pour l'affichage**, dans l'API : voir « Pourquoi ce découpage » (§2).
 
 ### 6.3. Stockage
 
@@ -316,19 +306,19 @@ Un seul stockage durable, **PostgreSQL** ; seule l'API y écrit.
 
 ## 7. Déploiement
 
-Tout se lance avec Docker Compose (`docker compose up --build`), sans rien d'autre sur la machine.
+Tout se lance avec une seule commande (`docker compose up --build -d --wait`), sans rien d'autre sur la machine ni fichier de configuration : chaque variable a une valeur par défaut, et les délais de la détection sont raccourcis pour la démonstration (valeurs des ADR dans `.env.example`).
 
 | Service | Image | Port hôte | Volume | Démarre après |
 |---|---|---|---|---|
 | `mosquitto` | `eclipse-mosquitto:2` | 1883 | `mosquitto-data` | — (contrôle de santé) |
-| `postgres` | `postgres:16` | 5432 (`POSTGRES_PORT`) | `pgdata` | — (contrôle de santé) |
+| `postgres` | `postgres:16` | — (réseau Docker seulement) | `pgdata` | — (contrôle de santé) |
 | `node-red` | `nodered/node-red:4.1.12` | 1880 (éditeur et simulateur) | `node-red-data` + flows du dépôt | broker |
 | `detection` | construite (Node 22, bundle esbuild) | — | — | broker |
 | `notification` | construite (Node 22, bundle esbuild) | — | — | broker |
 | `api-gateway` | construite (Node 22) : migrations, seed, puis API | 3000 | — | broker et base sains, Node-RED démarré ; contrôle de santé propre (`/health`) |
 | `web` | construite (Vite) puis `nginx:1.27-alpine` | 8080 (`WEB_PORT`) | — | API saine |
 
-**Intégration continue** (GitHub Actions) : à chaque push, vérification des types de tous les paquets, tests (contrat d'événements, flow Node-RED, détection, notification, API, application web), construction de toutes les images, puis un **scénario de bout en bout** sur la pile complète (chute et escalade, notifications, actions du senior, inactivité, absence, batterie faible, application servie par nginx).
+**Intégration continue** : voir le [README](../README.md#tests-automatiques).
 
 ---
 
@@ -357,15 +347,4 @@ Tout se lance avec Docker Compose (`docker compose up --build`), sans rien d'aut
 
 ## 9. Organisation du dépôt
 
-Un **monorepo** avec des *npm workspaces* : les services partagent le contrat de données (`packages/shared-types`) et se lancent ensemble ; un dépôt par service n'aurait de sens que pour des équipes qui déploient indépendamment.
-
-```
-packages/shared-types   contrat : JSON Schemas, types, noms de topics, tests de contrat
-services/ingestion      Node-RED : flows (ingestion + simulateur), réglages
-services/detection      détection (domaine + infrastructure), tests avec temps simulé
-services/notification   routage des notifications
-apps/api-gateway        API NestJS, schéma Prisma et migrations, scénario de bout en bout
-apps/web                application web (3 vues), configuration nginx
-infra/mosquitto         configuration du broker
-docs/                   architecture, DDD, risques, contrats, ADR
-```
+Un **monorepo** avec des *npm workspaces* : les services partagent le contrat de données (`packages/shared-types`) et se lancent ensemble ; un dépôt par service n'aurait de sens que pour des équipes qui déploient indépendamment. Arborescence : [README](../README.md#7-organisation-du-dépôt).
