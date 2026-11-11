@@ -59,6 +59,10 @@ export function applyDomainEvent(current: AlertRecord | null, event: DomainEvent
       // L'escalade qui suit (CriticalAlertGenerated) porte l'information utile.
       return { next: current, change: 'unchanged' };
 
+    case 'SensorStatusChanged':
+      // État d'un capteur (niveau 0) : pas une alerte, rien dans le journal des alertes (ADR 0012).
+      return { next: current, change: 'unchanged' };
+
     case 'CriticalAlertGenerated': {
       const p = event.payload;
       if (!current) {

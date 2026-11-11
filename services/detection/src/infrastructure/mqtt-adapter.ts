@@ -27,10 +27,11 @@ export class MqttDomainEventPublisher implements DomainEventPublisher {
       topic,
       eventId: event.eventId,
       type: event.type,
-      alertId: event.payload.alertId,
+      ...('alertId' in event.payload ? { alertId: event.payload.alertId } : {}),
       ...(event.type === 'CriticalAlertGenerated'
         ? { severity: event.payload.severity, escalationCause: event.payload.escalationCause }
         : {}),
+      ...(event.type === 'SensorStatusChanged' ? { sensorId: event.payload.sensorId, status: event.payload.status } : {}),
     });
   }
 }

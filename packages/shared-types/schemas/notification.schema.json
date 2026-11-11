@@ -19,18 +19,42 @@
     },
     "payload": {
       "type": "object",
-      "required": ["alertId", "recipientRole", "priority", "severity", "reason", "escalationCause", "title", "message"],
+      "required": ["alertId", "sensorId", "recipientRole", "priority", "severity", "reason", "escalationCause", "title", "message"],
       "additionalProperties": false,
       "properties": {
-        "alertId": { "type": "string", "minLength": 1 },
+        "alertId": { "type": ["string", "null"], "minLength": 1 },
+        "sensorId": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9_-]+$" },
         "recipientRole": { "type": "string", "enum": ["FAMILY", "MEDICAL"] },
         "priority": { "type": "string", "enum": ["INFO", "NORMAL", "URGENT"] },
         "severity": { "type": "string", "enum": ["SYSTEM", "PRE_ALERT", "WARNING", "CRITICAL"] },
-        "reason": { "type": "string", "enum": ["FALL_DETECTED", "PROLONGED_INACTIVITY", "HELP_REQUESTED"] },
-        "escalationCause": { "type": "string", "enum": ["NO_RESPONSE", "SENIOR_CONFIRMED", "IMMEDIATE", "NO_RECOVERY", "NO_HEART_SIGNAL"] },
+        "reason": { "type": ["string", "null"], "enum": ["FALL_DETECTED", "PROLONGED_INACTIVITY", "HELP_REQUESTED", null] },
+        "escalationCause": { "type": ["string", "null"], "enum": ["NO_RESPONSE", "SENIOR_CONFIRMED", "IMMEDIATE", "NO_RECOVERY", "NO_HEART_SIGNAL", null] },
         "title": { "type": "string", "minLength": 1 },
         "message": { "type": "string", "minLength": 1 }
-      }
+      },
+      "oneOf": [
+        {
+          "description": "Notification d'alerte",
+          "type": "object",
+          "properties": {
+            "alertId": { "type": "string" },
+            "sensorId": { "type": "null" },
+            "reason": { "type": "string" },
+            "escalationCause": { "type": "string" }
+          }
+        },
+        {
+          "description": "Notification de capteur (ADR 0012)",
+          "type": "object",
+          "properties": {
+            "alertId": { "type": "null" },
+            "sensorId": { "type": "string" },
+            "severity": { "type": "string", "enum": ["SYSTEM"] },
+            "reason": { "type": "null" },
+            "escalationCause": { "type": "null" }
+          }
+        }
+      ]
     }
   }
 }

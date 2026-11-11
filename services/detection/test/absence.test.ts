@@ -16,6 +16,7 @@ const base: ActivityProfileData = {
   timeZone: 'Europe/Paris',
   thresholds: [{ condition: 'MAX_INACTIVITY_MINUTES', durationInMinutes: 120, timeRange: null }],
   absence: null,
+  sensors: [],
 };
 const profile = (absence: ActivityProfileData['absence']) => ActivityProfile.fromContract({ ...base, absence });
 

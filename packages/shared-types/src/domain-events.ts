@@ -1,5 +1,6 @@
 // Événements de domaine publiés par la détection (docs/format-evenements.md).
 
+import type { SensorKind } from './profiles.js';
 import type { IsoUtcTimestamp, TopicSafeId, Uuid } from './common.js';
 
 export const DomainEventType = {
@@ -7,6 +8,7 @@ export const DomainEventType = {
   PreConfirmationCanceled: 'PreConfirmationCanceled',
   PreConfirmationTimeoutExpired: 'PreConfirmationTimeoutExpired',
   CriticalAlertGenerated: 'CriticalAlertGenerated',
+  SensorStatusChanged: 'SensorStatusChanged',
 } as const;
 export type DomainEventType = (typeof DomainEventType)[keyof typeof DomainEventType];
 
@@ -77,11 +79,28 @@ export interface CriticalAlertGeneratedPayload {
   triggeringEventIds: Uuid[];
 }
 
+/** État d'un capteur attendu, tel que la détection le surveille (ADR 0012). */
+export const SensorStatus = { ONLINE: 'ONLINE', OFFLINE: 'OFFLINE', LOW_BATTERY: 'LOW_BATTERY' } as const;
+export type SensorStatus = (typeof SensorStatus)[keyof typeof SensorStatus];
+
+/** Niveau 0 (SYSTEM) : un capteur devient muet, a une batterie faible, ou se remet à émettre. */
+export interface SensorStatusChangedPayload {
+  sensorId: TopicSafeId;
+  kind: SensorKind;
+  status: SensorStatus;
+  severity: 'SYSTEM';
+  /** Dernier signal reçu de ce capteur ; null s'il n'a rien envoyé depuis le démarrage de la détection. */
+  lastSeenAt: IsoUtcTimestamp | null;
+  /** Dernier niveau de batterie connu (SENSOR_HEARTBEAT) ; null s'il est inconnu. */
+  battery: { value: number; unit: '%' } | null;
+}
+
 export interface DomainEventPayloadByType {
   PreConfirmationRequested: PreConfirmationRequestedPayload;
   PreConfirmationCanceled: PreConfirmationCanceledPayload;
   PreConfirmationTimeoutExpired: PreConfirmationTimeoutExpiredPayload;
   CriticalAlertGenerated: CriticalAlertGeneratedPayload;
+  SensorStatusChanged: SensorStatusChangedPayload;
 }
 
 interface DomainEventOf<T extends DomainEventType> {

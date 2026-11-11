@@ -7,7 +7,7 @@ Il couvre cinq familles de messages :
 | Famille | Produit par | Consommé par | Section |
 |---|---|---|---|
 | **Signaux normalisés** (`RawSignal`) | Ingestion (Node-RED) | Détection, historisation | §1 à §5 |
-| **Événements de domaine** (pré-confirmation, alerte critique) | Détection | Notification, API, appli senior | §6 |
+| **Événements de domaine** (pré-confirmation, alerte critique, état des capteurs) | Détection | Notification, API, appli senior | §6 |
 | **Messages rejetés** (file de rejet / DLQ) | Ingestion | Supervision, débogage | §7 |
 | **Notifications** (`NotificationRequested`) | Notification | API (remise aux personnes) | §9 |
 | **Profils d'activité** (`ActivityProfileUpdated`) | API (seuils modifiés par le médical, absence déclarée par le senior) | Détection | §10 |
@@ -250,6 +250,7 @@ Même principe que les signaux, sans `sensorId` (l'émetteur est toujours le ser
 | `PreConfirmationCanceled` | La pré-confirmation est annulée : la personne a répondu « tout va bien » ou son activité a repris. Aucune alerte critique. |
 | `PreConfirmationTimeoutExpired` | La personne n'a pas répondu dans le délai imparti. Suivi d'un `CriticalAlertGenerated`. |
 | `CriticalAlertGenerated` | Incident avéré : déclenche l'envoi des notifications à la famille et à l'équipe médicale. |
+| `SensorStatusChanged` | Niveau 0 (`SYSTEM`) : un capteur attendu devient muet, a une batterie faible, ou se remet à émettre normalement ([ADR 0012](adr/0012-surveillance-capteurs.md)). |
 
 ### Énumérations partagées
 
@@ -266,7 +267,7 @@ Même principe que les signaux, sans `sensorId` (l'émetteur est toujours le ser
 
 | Niveau | Valeur | Signification | Où on la trouve | Effet dans l'application |
 |---|---|---|---|---|
-| 0 | `SYSTEM` | Événement technique (batterie faible, capteur muet) | Événements de supervision des capteurs (à venir) | Indicateur dans la vue médicale, journal |
+| 0 | `SYSTEM` | Événement technique (batterie faible, capteur muet) | `SensorStatusChanged` | État des capteurs dans les vues médicale et famille ; notification `INFO` à l'équipe médicale (et à la famille si la montre se tait) |
 | 1 | `PRE_ALERT` | Levée de doute en cours | Implicite pour `PreConfirmationRequested` | Vibration de la montre, bandeau « Tout va bien ? » avec compte à rebours dans la vue senior |
 | 2 | `WARNING` | Incident non infirmé : la personne n'a pas répondu | `CriticalAlertGenerated` (`NO_RESPONSE`) | Alerte dans la vue famille, trace pour l'équipe médicale |
 | 3 | `CRITICAL` | Urgence confirmée | `CriticalAlertGenerated` (`SENIOR_CONFIRMED`, `IMMEDIATE`, `NO_RECOVERY`, `NO_HEART_SIGNAL`) | Alerte urgente dans les vues médicale et famille. Dans un déploiement réel, ce niveau déclencherait un appel ou l'envoi de secours (hors périmètre du projet). |
@@ -385,6 +386,28 @@ plus d'activité depuis le seuil ─► PreConfirmationRequested (PROLONGED_INAC
 
 Contrairement à la chute, **une seule activité suffit** à lever le doute : la personne bouge, elle n'est pas inactive. Une seule alerte à la fois par senior : pas d'alerte d'inactivité pendant une alerte de chute.
 
+### `SensorStatusChanged`
+```json
+{
+  "sensorId": "pir-salon",
+  "kind": "PIR",
+  "status": "OFFLINE",
+  "severity": "SYSTEM",
+  "lastSeenAt": "2026-01-15T11:02:00.000Z",
+  "battery": { "value": 14, "unit": "%" }
+}
+```
+| Champ | Type | Description |
+|---|---|---|
+| `sensorId` | string | Capteur concerné (registre des capteurs, `sensorId` des signaux). |
+| `kind` | `PIR` \| `PRESSURE_PLATE` \| `WATCH` | Type de capteur. |
+| `status` | `ONLINE` \| `OFFLINE` \| `LOW_BATTERY` | Nouvel état : `OFFLINE` si aucun signal depuis plus que l'intervalle attendu du capteur (§10), `LOW_BATTERY` si la dernière batterie connue est sous 20 %, `ONLINE` sinon. `OFFLINE` l'emporte sur `LOW_BATTERY`. |
+| `severity` | `SYSTEM` | Toujours niveau 0 : ce n'est pas une alerte sur la personne. |
+| `lastSeenAt` | string (ISO 8601, UTC) ou `null` | Dernier signal reçu du capteur ; `null` s'il n'a rien envoyé depuis le démarrage de la détection. |
+| `battery` | `{ value, unit: '%' }` ou `null` | Dernière batterie connue (`SENSOR_HEARTBEAT`). |
+
+L'événement n'est publié **qu'à un changement d'état** (un capteur muet ne produit pas un message par minute). Il n'a pas d'`alertId` : il ne crée pas d'alerte dans le journal des alertes.
+
 Si la personne a montré une **activité** sans encore la **stabilité** au moment où le délai de pré-confirmation expire, la décision est reportée jusqu'à la fin du délai de confirmation de la séquence de relèvement : elle peut encore se relever avant l'alerte.
 
 ---
@@ -445,8 +468,11 @@ Le service de notification écoute les alertes avérées (`CriticalAlertGenerate
 |---|---|---|
 | `WARNING` (niveau 2) | `NORMAL` : à traiter | `INFO` : pour trace |
 | `CRITICAL` (niveau 3) | `URGENT` | `URGENT` |
+| `SYSTEM` (niveau 0, `SensorStatusChanged` muet ou batterie faible) | `NORMAL` pour la **montre** seulement | `INFO` |
 
-Une alerte qui passe du niveau 2 au niveau 3 produit donc deux séries de notifications. Le senior ne reçoit pas de notification : il est sollicité par la levée de doute (bandeau « Tout va bien ? »).
+Une alerte qui passe du niveau 2 au niveau 3 produit donc deux séries de notifications. Un capteur qui revient en ligne ne produit pas de notification (l'état est visible dans les vues).
+
+Une notification concerne **soit une alerte** (`alertId`, `reason`, `escalationCause` renseignés, `sensorId` à `null`), **soit un capteur** (`sensorId` renseigné, `severity` à `SYSTEM`, les trois autres à `null`) : [ADR 0012](adr/0012-surveillance-capteurs.md). Le senior ne reçoit pas de notification : il est sollicité par la levée de doute (bandeau « Tout va bien ? »).
 
 ### `NotificationRequested`
 
@@ -458,6 +484,7 @@ Une alerte qui passe du niveau 2 au niveau 3 produit donc deux séries de notifi
   "timestamp": "2026-01-15T14:33:09.000Z",
   "payload": {
     "alertId": "alert-123",
+    "sensorId": null,
     "recipientRole": "FAMILY",
     "priority": "NORMAL",
     "severity": "WARNING",
@@ -469,23 +496,46 @@ Une alerte qui passe du niveau 2 au niveau 3 produit donc deux séries de notifi
 }
 ```
 
+Notification de capteur :
+
+```json
+{
+  "eventId": "d4e5f6a7-0002-4000-8000-000000000302",
+  "seniorId": "senior-001",
+  "type": "NotificationRequested",
+  "timestamp": "2026-01-15T13:05:00.000Z",
+  "payload": {
+    "alertId": null,
+    "sensorId": "watch-001",
+    "recipientRole": "FAMILY",
+    "priority": "NORMAL",
+    "severity": "SYSTEM",
+    "reason": null,
+    "escalationCause": null,
+    "title": "La montre ne transmet plus",
+    "message": "La montre ne donne plus de nouvelles depuis plus de 15 minutes : elle est peut-être déchargée ou loin du téléphone. Les chutes ne sont plus détectées."
+  }
+}
+```
+
 | Champ | Type | Description |
 |---|---|---|
 | `eventId` | string (UUID) | Identifiant de la notification ; l'API ignore un doublon (QoS 1). |
 | `seniorId` | string | Personne concernée. |
 | `type` | `NotificationRequested` | Seul type de notification pour l'instant. |
 | `timestamp` | string (ISO 8601, UTC) | Moment où la notification a été décidée. |
-| `payload.alertId` | string | Alerte à l'origine de la notification. |
+| `payload.alertId` | string ou `null` | Alerte à l'origine de la notification ; `null` pour une notification de capteur. |
+| `payload.sensorId` | string ou `null` | Capteur concerné ; `null` pour une notification d'alerte. |
 | `payload.recipientRole` | `FAMILY` \| `MEDICAL` | Rôle destinataire. |
 | `payload.priority` | `INFO` \| `NORMAL` \| `URGENT` | Priorité d'affichage. |
-| `payload.severity`, `payload.reason`, `payload.escalationCause` | voir §6 | Repris de l'alerte. |
+| `payload.severity`, `payload.reason`, `payload.escalationCause` | voir §6 | Repris de l'alerte ; pour un capteur : `SYSTEM`, `null`, `null`. |
 | `payload.title`, `payload.message` | string | Texte destiné aux personnes, en français. |
 
 ---
 
 ## 10. Profils d'activité (seuils d'inactivité)
 
-Le profil d'activité d'un senior (DDD : `ActivityProfile`) contient l'**absence** déclarée par le senior (« je m'absente », [ADR 0011](adr/0011-absence-declaree.md)) et les **seuils de tolérance** configurés par l'équipe médicale : au-delà de la durée indiquée sans activité, la détection lève le doute. Chaque seuil peut porter une **plage horaire** (heure locale du logement), pour distinguer le jour de la nuit ([ADR 0010](adr/0010-detection-inactivite.md)).
+Le profil d'activité d'un senior (DDD : `ActivityProfile`) contient la liste des **capteurs attendus** ([ADR 0012](adr/0012-surveillance-capteurs.md)), l'**absence** déclarée par le senior (« je m'absente », [ADR 0011](adr/0011-absence-declaree.md)) et les **seuils de tolérance** configurés par l'équipe médicale : au-delà de la durée indiquée sans activité, la détection lève le doute. Chaque seuil peut porter une **plage horaire** (heure locale du logement), pour distinguer le jour de la nuit ([ADR 0010](adr/0010-detection-inactivite.md)).
 
 **Livraison à la détection** : au démarrage, la détection lit tous les profils à l'API (`GET /internal/activity-profiles`, en-tête `x-service-token`) ; ensuite, à chaque modification (seuils changés par le médical, absence déclarée, terminée ou expirée par un retour), l'API publie le profil complet sur `profiles/{seniorId}`. La détection garde les profils en mémoire et ne lit jamais la base.
 
@@ -504,7 +554,12 @@ Le profil d'activité d'un senior (DDD : `ActivityProfile`) contient l'**absence
       { "condition": "MAX_INACTIVITY_MINUTES", "durationInMinutes": 120, "timeRange": { "startTime": "07:00", "endTime": "22:00" } },
       { "condition": "MAX_INACTIVITY_MINUTES", "durationInMinutes": 600, "timeRange": { "startTime": "22:00", "endTime": "07:00" } }
     ],
-    "absence": { "since": "2026-01-15T09:00:00.000Z", "until": "2026-01-15T17:00:00.000Z" }
+    "absence": { "since": "2026-01-15T09:00:00.000Z", "until": "2026-01-15T17:00:00.000Z" },
+    "sensors": [
+      { "sensorId": "pir-salon", "kind": "PIR", "room": "salon", "location": null, "expectedIntervalMinutes": 120 },
+      { "sensorId": "plate-lit", "kind": "PRESSURE_PLATE", "room": "chambre", "location": "lit", "expectedIntervalMinutes": 120 },
+      { "sensorId": "watch-001", "kind": "WATCH", "room": null, "location": null, "expectedIntervalMinutes": 15 }
+    ]
   }
 }
 ```
@@ -520,6 +575,7 @@ Le profil d'activité d'un senior (DDD : `ActivityProfile`) contient l'**absence
 | `…condition` | `MAX_INACTIVITY_MINUTES` | Seule condition gérée : durée maximale sans activité. |
 | `…durationInMinutes` | entier, 1 à 1440 | Durée tolérée. |
 | `…timeRange` | `{ startTime, endTime }` ou `null` | Plage `HH:MM` → `HH:MM` en heure locale ; elle peut passer minuit (`22:00` → `07:00`). `null` : seuil par défaut, pour les heures couvertes par aucune plage. |
+| `payload.sensors[]` | `ExpectedSensor` | Capteurs attendus au domicile ([ADR 0012](adr/0012-surveillance-capteurs.md)) : `sensorId`, `kind` (`PIR`, `PRESSURE_PLATE`, `WATCH`), `room` et `location` (ou `null`), `expectedIntervalMinutes` (1 à 1440) : au-delà sans aucun signal, la détection publie `SensorStatusChanged` (`OFFLINE`). |
 | `payload.absence` | `{ since, until }` ou `null` | Absence déclarée par le senior : de `since` au retour prévu `until` (ISO 8601 UTC, au plus 24 h). `null` : la personne est chez elle. |
 
 **Choix du seuil** à un instant donné :

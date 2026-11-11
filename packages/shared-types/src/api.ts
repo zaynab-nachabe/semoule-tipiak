@@ -2,9 +2,9 @@
 // Réutilise les types du contrat d'événements ; ne les redéfinit pas.
 
 import type { IsoUtcTimestamp, TopicSafeId } from './common.js';
-import type { AlertReason, CancellationCause, EscalationCause, PreConfirmationRequestedPayload, Severity } from './domain-events.js';
+import type { AlertReason, CancellationCause, EscalationCause, PreConfirmationRequestedPayload, SensorStatus, Severity } from './domain-events.js';
 import type { NotificationPriority } from './notifications.js';
-import type { ToleranceThreshold } from './profiles.js';
+import type { SensorKind, ToleranceThreshold } from './profiles.js';
 
 export const Role = { SENIOR: 'SENIOR', FAMILY: 'FAMILY', MEDICAL: 'MEDICAL' } as const;
 export type Role = (typeof Role)[keyof typeof Role];
@@ -102,6 +102,27 @@ export interface ActionAcceptedView {
   eventId: string;
 }
 
+// ─── État des capteurs (ADR 0012) ───
+
+/**
+ * Un capteur attendu et son état (dernier SensorStatusChanged de la détection, dernier signal reçu).
+ * Famille : version simplifiée (modèle et intervalle attendu à null).
+ */
+export interface SensorHealthView {
+  sensorId: TopicSafeId;
+  kind: SensorKind;
+  room: string | null;
+  location: string | null;
+  status: SensorStatus;
+  statusChangedAt: IsoUtcTimestamp | null;
+  lastSeenAt: IsoUtcTimestamp | null;
+  battery: { value: number; unit: '%' } | null;
+  /** Médical uniquement. */
+  model: string | null;
+  /** Médical uniquement. */
+  expectedIntervalMinutes: number | null;
+}
+
 // ─── Absence déclarée par le senior (ADR 0011) ───
 
 /** Absence en cours : depuis `since`, retour prévu à `until`. */
@@ -128,10 +149,12 @@ export interface ThresholdsUpdateRequest {
 export interface NotificationView {
   notificationId: string;
   seniorId: TopicSafeId;
-  alertId: string;
+  /** Alerte concernée, ou null pour une notification de capteur (sensorId renseigné). */
+  alertId: string | null;
+  sensorId: TopicSafeId | null;
   priority: NotificationPriority;
   severity: Severity;
-  reason: AlertReason;
+  reason: AlertReason | null;
   title: string;
   message: string;
   createdAt: IsoUtcTimestamp;
@@ -141,6 +164,8 @@ export interface NotificationView {
 // ─── Temps réel (WebSocket, docs/contrat-api.md §4) ───
 
 export interface RealtimeMessageByType {
+  /** État d'un capteur changé (SensorStatusChanged) : à tous ceux qui ont accès au senior, projeté selon le rôle. */
+  'sensor.changed': { seniorId: TopicSafeId; sensor: SensorHealthView };
   /** Absence déclarée, terminée ou remplacée : à tous ceux qui ont accès au senior. */
   'absence.changed': { seniorId: TopicSafeId; absence: AbsenceView | null };
   'alert.created': AlertView;

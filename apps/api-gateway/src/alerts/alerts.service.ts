@@ -20,6 +20,7 @@ export class AlertsService {
 
   /** Met à jour le journal avec un événement de domaine ; renvoie le changement, ou null s'il n'y en a pas. */
   async applyEvent(event: DomainEvent): Promise<AlertChange | null> {
+    if (event.type === 'SensorStatusChanged') return null; // pas une alerte (ADR 0012)
     const alertId = event.payload.alertId;
     return this.prisma.$transaction(async (tx) => {
       const row = await tx.alert.findUnique({ where: { id: alertId } });

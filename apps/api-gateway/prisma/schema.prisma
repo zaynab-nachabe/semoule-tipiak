@@ -114,6 +114,7 @@ model Senior {
   relationships CareRelationship[]   @relation("TrackedSenior")
   thresholds    ToleranceThreshold[]
   absences      Absence[]
+  sensors       Sensor[]
   contacts      EmergencyContact[]
   alerts        Alert[]
   signals       SignalRecord[]
@@ -229,11 +230,13 @@ model Notification {
   recipientId     String
   recipient       Person               @relation(fields: [recipientId], references: [id])
   seniorId        String
-  alertId         String
+  /// Une notification concerne une alerte (alertId, reason, escalationCause) ou un capteur (sensorId) : ADR 0012.
+  alertId         String?
+  sensorId        String?
   priority        NotificationPriority
   severity        Severity
-  reason          AlertReason
-  escalationCause EscalationCause
+  reason          AlertReason?
+  escalationCause EscalationCause?
   title           String
   message         String
   createdAt       DateTime
@@ -285,3 +288,40 @@ model Absence {
   @@index([seniorId, startedAt])
   @@map("absences")
 }
+
+// ─────────────────────────────────────────────────────────────
+// Registre des capteurs attendus et leur état (ADR 0012)
+// ─────────────────────────────────────────────────────────────
+
+enum SensorKind {
+  PIR
+  PRESSURE_PLATE
+  WATCH
+}
+
+enum SensorStatus {
+  ONLINE
+  OFFLINE
+  LOW_BATTERY
+}
+
+/// Capteur attendu chez un senior. L'identifiant est le sensorId des signaux (friendly_name dans Zigbee2MQTT).
+/// Copie du registre de Node-RED (limite connue : deux registres à tenir à jour, ADR 0012).
+model Sensor {
+  id                      String       @id
+  seniorId                String
+  senior                  Senior       @relation(fields: [seniorId], references: [id])
+  kind                    SensorKind
+  model                   String?
+  room                    String?
+  location                String?
+  /// Au-delà de ce délai sans signal, la détection déclare le capteur muet.
+  expectedIntervalMinutes Int
+  /// Dernier état publié par la détection (SensorStatusChanged).
+  status                  SensorStatus @default(ONLINE)
+  statusChangedAt         DateTime?
+
+  @@index([seniorId])
+  @@map("sensors")
+}
+
